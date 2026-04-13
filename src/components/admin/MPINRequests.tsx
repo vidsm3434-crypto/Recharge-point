@@ -53,6 +53,9 @@ export function MPINRequests() {
 
       if (error) throw error;
       
+      // Immediately remove from local state for better UX
+      setRequests(current => current.filter(r => r.id !== user.id));
+      
       setGeneratedPin(newTempMpin);
       setSelectedUserForPin(user);
       setShowManualResetDialog(false);
@@ -86,6 +89,9 @@ export function MPINRequests() {
         .eq('id', userId);
 
       if (error) throw error;
+      
+      // Immediately remove from local state
+      setRequests(current => current.filter(r => r.id !== userId));
       
       toast.success('Request rejected. User can now set a new MPIN.');
       fetchRequests();

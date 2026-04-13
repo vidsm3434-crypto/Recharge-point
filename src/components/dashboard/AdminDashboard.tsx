@@ -175,19 +175,27 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
           {
             event: 'UPDATE',
             schema: 'public',
-            table: 'profiles',
-            filter: 'mpin=eq.RESET_PENDING'
+            table: 'profiles'
           },
           (payload) => {
-            console.log('New MPIN reset request:', payload);
-            toast.info('New MPIN Reset Request', {
-              description: `User ${payload.new.name} has requested an MPIN reset.`,
-              action: {
-                label: 'View',
-                onClick: () => setActiveSection('mpin_requests')
-              }
-            });
-            setPendingMpinRequests(prev => prev + 1);
+            const wasPending = payload.old.mpin === 'RESET_PENDING';
+            const isPending = payload.new.mpin === 'RESET_PENDING';
+
+            if (!wasPending && isPending) {
+              console.log('New MPIN reset request:', payload);
+              toast.info('New MPIN Reset Request', {
+                description: `User ${payload.new.name} has requested an MPIN reset.`,
+                action: {
+                  label: 'View',
+                  onClick: () => setActiveSection('mpin_requests')
+                }
+              });
+              setPendingMpinRequests(prev => prev + 1);
+            } else if (wasPending && !isPending) {
+              console.log('MPIN reset request resolved:', payload);
+              setPendingMpinRequests(prev => Math.max(0, prev - 1));
+            }
+            
             setUsers(current => current.map(u => u.id === payload.new.id ? payload.new : u));
           }
         );
