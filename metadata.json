@@ -1,0 +1,5 @@
+{
+  "name": "RechargePoint",
+  "description": "A modern mobile recharge application with Admin, Distributor, and Retailer roles, featuring real-time wallet management and transaction reporting.",
+  "requestFramePermissions": []
+}
