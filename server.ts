@@ -502,7 +502,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
     }
   });
 
-// --- VITE MIDDLEWARE (Development Only) ---
+// --- VITE MIDDLEWARE OR STATIC SERVING ---
 if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
   (async () => {
     const { createServer: createViteServer } = await import("vite");
@@ -516,6 +516,24 @@ if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   })();
+} else {
+  // Production or Vercel
+  const distPath = path.join(process.cwd(), "dist");
+  app.use(express.static(distPath));
+  
+  // SPA fallback
+  app.get("*", (req, res, next) => {
+    // Skip if it's an API route (though they are defined above, just in case)
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+
+  // Only listen if NOT on Vercel (Cloud Run needs this)
+  if (process.env.VERCEL !== "1") {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 export default app;
