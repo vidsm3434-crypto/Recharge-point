@@ -18,16 +18,20 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 // Use service role key for backend operations to bypass RLS
 const supabase = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  app.use(express.json());
+app.use(express.json());
 
-  // --- RECHARGE API ENDPOINTS ---
+// Health check for Vercel deployment
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "Server is running on Vercel" });
+});
 
-  // Mappings for A1Topup
-  const OPERATOR_MAPPING: Record<string, string> = {
+// --- RECHARGE API ENDPOINTS ---
+
+// Mappings for A1Topup
+const OPERATOR_MAPPING: Record<string, string> = {
     "Airtel": "A",
     "Vodafone": "V",
     "Vi": "V",
@@ -498,25 +502,20 @@ async function startServer() {
     }
   });
 
-  // --- VITE MIDDLEWARE ---
-
-  if (process.env.NODE_ENV !== "production") {
+// --- VITE MIDDLEWARE (Development Only) ---
+if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
+  (async () => {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
     });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  })();
 }
 
-startServer();
+export default app;
