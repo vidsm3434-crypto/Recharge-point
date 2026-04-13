@@ -269,40 +269,19 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
 
   const handleUpdateWallet = async (userId: string, amount: number, type: 'credit' | 'debit', remark: string) => {
     try {
-      const user = users.find(u => u.id === userId);
-      if (!user) return;
+      const response = await fetch('/api/admin/update-wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, amount, type, remark })
+      });
 
-      const finalAmount = type === 'credit' ? amount : -amount;
-      const newBalance = (user.wallet_balance || 0) + finalAmount;
-
-      const { error: walletError } = await supabase
-        .from('profiles')
-        .update({ wallet_balance: newBalance })
-        .eq('id', userId);
-
-      if (walletError) throw walletError;
-
-      await supabase
-        .from('transactions')
-        .insert([
-          {
-            user_id: userId,
-            type: 'wallet_add',
-            amount: amount,
-            status: 'success',
-            details: {
-              note: remark || `Admin ${type}`,
-              adminAction: true,
-              type: type,
-              txnId: `ADM${Date.now()}`
-            }
-          }
-        ]);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Update failed');
 
       toast.success(`Wallet ${type}ed successfully`);
       fetchData();
-    } catch (error) {
-      toast.error('Wallet update failed');
+    } catch (error: any) {
+      toast.error(error.message || 'Wallet update failed');
     }
   };
 

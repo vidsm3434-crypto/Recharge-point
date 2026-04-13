@@ -288,61 +288,27 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
 
     setLoading(true);
     try {
-      const retailer = retailers.find(r => r.id === transferData.retailerId);
-      if (!retailer) throw new Error('Retailer not found');
-
-      if ((retailer.wallet_balance || 0) < amount) {
-        throw new Error('Retailer has insufficient balance');
-      }
-
-      // 1. Deduct from retailer
-      const { error: retError } = await supabase
-        .from('profiles')
-        .update({ wallet_balance: (retailer.wallet_balance || 0) - amount })
-        .eq('id', retailer.id);
-
-      if (retError) throw retError;
-
-      // 2. Add to distributor
-      const { error: distError } = await supabase
-        .from('profiles')
-        .update({ wallet_balance: (profile?.wallet_balance || 0) + amount })
-        .eq('id', profile?.id);
-
-      if (distError) throw distError;
-
-      // 3. Record transaction
-      await supabase.from('transactions').insert([
-        {
-          user_id: retailer.id,
-          type: 'wallet_deduct',
+      const response = await fetch('/api/admin/transfer-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: profile?.id,
+          toUserId: transferData.retailerId,
           amount: amount,
-          status: 'success',
-          details: {
-            note: transferData.remark || 'Deducted by Distributor',
-            distributor_id: profile?.id,
-            txnId: `DED${Date.now()}`
-          }
-        },
-        {
-          user_id: profile?.id,
-          type: 'wallet_add',
-          amount: amount,
-          status: 'success',
-          details: {
-            note: `Deducted from ${retailer.name}`,
-            retailer_id: retailer.id,
-            type: 'credit',
-            txnId: `DED${Date.now()}`
-          }
-        }
-      ]);
+          remark: transferData.remark,
+          type: 'deduct'
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Deduction failed');
 
       toast.success('Balance deducted successfully');
       setShowDeduct(false);
       setTransferData({ retailerId: '', amount: '', remark: '' });
       fetchProfile(profile!.id);
       fetchRetailers();
+      fetchTransactions();
     } catch (error: any) {
       toast.error(error.message || 'Deduction failed');
     } finally {
@@ -404,57 +370,27 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
 
     setLoading(true);
     try {
-      const retailer = retailers.find(r => r.id === transferData.retailerId);
-      if (!retailer) throw new Error('Retailer not found');
-
-      // 1. Deduct from distributor
-      const { error: distError } = await supabase
-        .from('profiles')
-        .update({ wallet_balance: (profile?.wallet_balance || 0) - amount })
-        .eq('id', profile?.id);
-
-      if (distError) throw distError;
-
-      // 2. Add to retailer
-      const { error: retError } = await supabase
-        .from('profiles')
-        .update({ wallet_balance: (retailer.wallet_balance || 0) + amount })
-        .eq('id', retailer.id);
-
-      if (retError) throw retError;
-
-      // 3. Record transaction
-      await supabase.from('transactions').insert([
-        {
-          user_id: retailer.id,
-          type: 'wallet_add',
+      const response = await fetch('/api/admin/transfer-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: profile?.id,
+          toUserId: transferData.retailerId,
           amount: amount,
-          status: 'success',
-          details: {
-            note: transferData.remark || 'Transfer from Distributor',
-            distributor_id: profile?.id,
-            txnId: `TRF${Date.now()}`
-          }
-        },
-        {
-          user_id: profile?.id,
-          type: 'wallet_add',
-          amount: amount,
-          status: 'success',
-          details: {
-            note: `Transfer to ${retailer.name}`,
-            retailer_id: retailer.id,
-            type: 'debit',
-            txnId: `TRF${Date.now()}`
-          }
-        }
-      ]);
+          remark: transferData.remark,
+          type: 'transfer'
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Transfer failed');
 
       toast.success('Balance transferred successfully');
       setShowTransfer(false);
       setTransferData({ retailerId: '', amount: '', remark: '' });
       fetchProfile(profile!.id);
       fetchRetailers();
+      fetchTransactions();
     } catch (error: any) {
       toast.error(error.message || 'Transfer failed');
     } finally {

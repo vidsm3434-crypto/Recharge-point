@@ -502,6 +502,170 @@ const OPERATOR_MAPPING: Record<string, string> = {
     }
   });
 
+  app.post("/api/admin/transfer-balance", async (req, res) => {
+    const { fromUserId, toUserId, amount, remark, type } = req.body;
+    
+    try {
+      if (!supabaseServiceKey) {
+        throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+      }
+
+      const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+      const transferAmount = parseFloat(amount);
+
+      if (isNaN(transferAmount) || transferAmount <= 0) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+
+      // 1. Get both profiles
+      const { data: fromProfile, error: fromError } = await adminSupabase
+        .from('profiles')
+        .select('*')
+        .eq('id', fromUserId)
+        .single();
+
+      const { data: toProfile, error: toError } = await adminSupabase
+        .from('profiles')
+        .select('*')
+        .eq('id', toUserId)
+        .single();
+
+      if (fromError || !fromProfile) return res.status(404).json({ error: "Source user not found" });
+      if (toError || !toProfile) return res.status(404).json({ error: "Target user not found" });
+
+      // 2. Check balance if it's a transfer or deduct
+      if (type === 'transfer' && fromProfile.wallet_balance < transferAmount) {
+        return res.status(400).json({ error: "Insufficient balance" });
+      }
+      if (type === 'deduct' && toProfile.wallet_balance < transferAmount) {
+        return res.status(400).json({ error: "Retailer has insufficient balance" });
+      }
+
+      // 3. Perform updates
+      let fromNewBalance = fromProfile.wallet_balance;
+      let toNewBalance = toProfile.wallet_balance;
+
+      if (type === 'transfer') {
+        fromNewBalance -= transferAmount;
+        toNewBalance += transferAmount;
+      } else if (type === 'deduct') {
+        fromNewBalance += transferAmount;
+        toNewBalance -= transferAmount;
+      }
+
+      const { error: updateFromError } = await adminSupabase
+        .from('profiles')
+        .update({ wallet_balance: fromNewBalance })
+        .eq('id', fromUserId);
+
+      const { error: updateToError } = await adminSupabase
+        .from('profiles')
+        .update({ wallet_balance: toNewBalance })
+        .eq('id', toUserId);
+
+      if (updateFromError || updateToError) {
+        throw new Error("Failed to update balances");
+      }
+
+      // 4. Record transactions
+      const txnId = `${type === 'transfer' ? 'TRF' : 'DED'}${Date.now()}`;
+      
+      await adminSupabase.from('transactions').insert([
+        {
+          user_id: toUserId,
+          type: type === 'transfer' ? 'wallet_add' : 'wallet_deduct',
+          amount: transferAmount,
+          status: 'success',
+          details: {
+            note: remark || (type === 'transfer' ? 'Transfer from Distributor' : 'Deducted by Distributor'),
+            distributor_id: fromUserId,
+            txnId: txnId
+          }
+        },
+        {
+          user_id: fromUserId,
+          type: type === 'transfer' ? 'wallet_add' : 'wallet_add', // Both are wallet_add but with different notes/types
+          amount: transferAmount,
+          status: 'success',
+          details: {
+            note: type === 'transfer' ? `Transfer to ${toProfile.name}` : `Deducted from ${toProfile.name}`,
+            retailer_id: toUserId,
+            type: type === 'transfer' ? 'debit' : 'credit',
+            txnId: txnId
+          }
+        }
+      ]);
+
+      res.json({ success: true, fromNewBalance, toNewBalance });
+    } catch (error: any) {
+      console.error("Transfer API Error:", error.message);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  });
+
+  app.post("/api/admin/update-wallet", async (req, res) => {
+    const { userId, amount, type, remark } = req.body;
+    
+    try {
+      if (!supabaseServiceKey) {
+        throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+      }
+
+      const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+      const updateAmount = parseFloat(amount);
+
+      if (isNaN(updateAmount) || updateAmount <= 0) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+
+      // 1. Get user profile
+      const { data: profile, error: profileError } = await adminSupabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError || !profile) return res.status(404).json({ error: "User not found" });
+
+      // 2. Calculate new balance
+      const finalAmount = type === 'credit' ? updateAmount : -updateAmount;
+      const newBalance = (profile.wallet_balance || 0) + finalAmount;
+
+      if (newBalance < 0) {
+        return res.status(400).json({ error: "Insufficient balance for deduction" });
+      }
+
+      // 3. Update balance
+      const { error: updateError } = await adminSupabase
+        .from('profiles')
+        .update({ wallet_balance: newBalance })
+        .eq('id', userId);
+
+      if (updateError) throw updateError;
+
+      // 4. Record transaction
+      await adminSupabase.from('transactions').insert([
+        {
+          user_id: userId,
+          type: 'wallet_add', // Using wallet_add for all admin credits/debits for now
+          amount: updateAmount,
+          status: 'success',
+          details: {
+            note: remark || `Admin ${type}`,
+            adminAction: true,
+            type: type,
+            txnId: `ADM${Date.now()}`
+          }
+        }
+      ]);
+
+      res.json({ success: true, newBalance });
+    } catch (error: any) {
+      console.error("Admin Wallet Update Error:", error.message);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  });
+
 // --- VITE MIDDLEWARE OR STATIC SERVING ---
 if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
   (async () => {
@@ -516,24 +680,20 @@ if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   })();
-} else {
-  // Production or Vercel
+} else if (process.env.VERCEL !== "1") {
+  // Production (Cloud Run)
   const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
   
   // SPA fallback
   app.get("*", (req, res, next) => {
-    // Skip if it's an API route (though they are defined above, just in case)
     if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(distPath, "index.html"));
   });
 
-  // Only listen if NOT on Vercel (Cloud Run needs this)
-  if (process.env.VERCEL !== "1") {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
 export default app;
