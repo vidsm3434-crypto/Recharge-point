@@ -194,121 +194,26 @@ export function WalletRequests() {
   const handleAction = async (request: any, action: 'approve' | 'reject', reason?: string) => {
     if (processingId) return;
     
-    const refNumber = request.details?.refNumber;
     setProcessingId(request.id);
     console.log(`Starting ${action} for request:`, request.id);
     
     try {
-      // 1. Double check if this UTR was already approved in another transaction (Safety Check)
-      if (action === 'approve' && refNumber) {
-        const { data: existingSuccess, error: checkError } = await supabase
-          .from('transactions')
-          .select('id')
-          .eq('type', 'wallet_add')
-          .eq('status', 'success')
-          .filter('details->>refNumber', 'eq', refNumber)
-          .neq('id', request.id);
+      const response = await fetch('/api/admin/process-wallet-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: request.id,
+          action,
+          rejectReason: reason
+        })
+      });
 
-        if (checkError) {
-          console.error('UTR check error:', checkError);
-        } else if (existingSuccess && existingSuccess.length > 0) {
-          toast.error('This Reference Number (UTR) has already been approved!');
-          setProcessingId(null);
-          setRequests(prev => prev.filter(r => r.id !== request.id));
-          return;
-        }
-      }
-
-      // 2. Update transaction status FIRST (Atomic-ish)
-      const updatedDetails = {
-        ...(request.details || {}),
-        processedAt: new Date().toISOString(),
-        processedBy: 'admin',
-        adminAction: true,
-        rejectReason: reason || null
-      };
-
-      console.log('Updating transaction status in DB...', { id: request.id, newStatus: action === 'approve' ? 'success' : 'failed' });
-      
-      const { data: updateResult, error: txnError, count } = await supabase
-        .from('transactions')
-        .update({ 
-          status: action === 'approve' ? 'success' : 'failed',
-          details: updatedDetails
-        }, { count: 'exact' })
-        .eq('id', request.id)
-        .eq('status', 'pending')
-        .select(); // Added select() to verify what was actually updated
-
-      if (txnError) {
-        console.error('Transaction update error:', txnError);
-        toast.error(`Database Error: ${txnError.message}`);
-        throw txnError;
-      }
-
-      console.log('Update result:', { count, updateResult });
-
-      if (count === 0 || !updateResult || updateResult.length === 0) {
-        console.warn('No rows updated. Request might already be processed or RLS blocked it.');
-        toast.error('Failed to update database. The request might have been processed by someone else or you lack permissions.');
-        setProcessingId(null);
-        fetchRequests(); // Refresh to see actual state
-        return;
-      }
-
-      // 3. If approved, update user balance AND auto-reject duplicates
-      if (action === 'approve') {
-        console.log('Updating user balance for user:', request.user_id);
-        const { data: userData, error: userError } = await supabase
-          .from('profiles')
-          .select('wallet_balance')
-          .eq('id', request.user_id)
-          .single();
-
-        if (userError) {
-          console.error('Error fetching user balance:', userError);
-          toast.error('Transaction status updated, but failed to fetch user balance.');
-        } else {
-          const newBalance = (userData.wallet_balance || 0) + request.amount;
-          const { error: updateError } = await supabase
-            .from('profiles')
-            .update({ wallet_balance: newBalance })
-            .eq('id', request.user_id);
-
-          if (updateError) {
-            console.error('Error updating balance:', updateError);
-            toast.error('Transaction status updated, but balance update failed.');
-          } else {
-            console.log('Balance updated successfully to:', newBalance);
-          }
-        }
-
-        // AUTO-REJECT DUPLICATES
-        if (refNumber) {
-          console.log('Auto-rejecting duplicates for UTR:', refNumber);
-          const { error: autoRejectError } = await supabase
-            .from('transactions')
-            .update({ 
-              status: 'failed',
-              details: {
-                autoRejected: true,
-                rejectReason: 'Duplicate UTR - Another request approved.',
-                processedAt: new Date().toISOString(),
-                processedBy: 'system'
-              }
-            })
-            .eq('type', 'wallet_add')
-            .eq('status', 'pending')
-            .filter('details->>refNumber', 'eq', refNumber)
-            .neq('id', request.id);
-          
-          if (autoRejectError) console.error('Auto-reject error:', autoRejectError);
-        }
-      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Action failed`);
 
       toast.success(`Request ${action}ed successfully`);
       
-      // Optimistic update
+      // Optimistic update: remove from local state immediately
       setRequests(prev => prev.filter(r => r.id !== request.id));
       
       setRejectingRequest(null);

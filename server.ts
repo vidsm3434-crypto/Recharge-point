@@ -156,6 +156,45 @@ const OPERATOR_MAPPING: Record<string, string> = {
     const { mobile, operator, amount, circle, userId } = req.body;
 
     try {
+      // 1. Fetch user profile to check email
+      const { data: userProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.error("Error fetching user profile:", profileError);
+        return res.status(500).json({ error: "Failed to fetch user profile" });
+      }
+
+      const orderId = `TXN_${Date.now()}`;
+
+      // 2. Check for specific DRMO retailer
+      if (userProfile?.email?.trim().toLowerCase() === 'ashish.10bd@gmail.com') {
+        console.log(`Simulating DRMO recharge for ${userProfile.email}`);
+        
+        // Simulate a successful response without hitting the API
+        const simulatedResponse = {
+          status: "Success",
+          txid: "TXN" + Date.now(),
+          opid: "OP" + Date.now(),
+          number: mobile,
+          amount: amount,
+          orderid: orderId
+        };
+
+        return res.json({
+          status: "success",
+          message: "Recharge Successful!",
+          txnId: simulatedResponse.txid,
+          opid: simulatedResponse.opid,
+          data: simulatedResponse,
+          normalizedStatus: "success"
+        });
+      }
+
+      // 3. Normal API processing for other users
       const config = await getApiConfig();
       const { 
         url = "https://business.a1topup.com", 
@@ -171,7 +210,6 @@ const OPERATOR_MAPPING: Record<string, string> = {
 
       const operatorCode = OPERATOR_MAPPING[operator] || operator;
       const circleCode = CIRCLE_MAPPING[circle] || circle;
-      const orderId = `TXN_${Date.now()}`;
 
       const params = {
         username: apiUser,
@@ -579,7 +617,8 @@ const OPERATOR_MAPPING: Record<string, string> = {
           details: {
             note: remark || (type === 'transfer' ? 'Transfer from Distributor' : 'Deducted by Distributor'),
             distributor_id: fromUserId,
-            txnId: txnId
+            txnId: txnId,
+            closing_balance: toNewBalance
           }
         },
         {
@@ -591,7 +630,8 @@ const OPERATOR_MAPPING: Record<string, string> = {
             note: type === 'transfer' ? `Transfer to ${toProfile.name}` : `Deducted from ${toProfile.name}`,
             retailer_id: toUserId,
             type: type === 'transfer' ? 'debit' : 'credit',
-            txnId: txnId
+            txnId: txnId,
+            closing_balance: fromNewBalance
           }
         }
       ]);
@@ -627,7 +667,31 @@ const OPERATOR_MAPPING: Record<string, string> = {
 
       if (profileError || !profile) return res.status(404).json({ error: "User not found" });
 
-      // 2. Calculate new balance
+      // 2. Check for DRMO retailer
+      if (profile.email?.trim().toLowerCase() === 'ashish.10bd@gmail.com') {
+        console.log(`Simulating DRMO wallet update for ${profile.email}`);
+        
+        // Record transaction but don't update balance
+        await adminSupabase.from('transactions').insert([
+          {
+            user_id: userId,
+            type: 'wallet_add',
+            amount: updateAmount,
+            status: 'success',
+            details: {
+              note: remark || `Admin ${type}`,
+              adminAction: true,
+              type: type,
+              txnId: `ADM${Date.now()}`,
+              closing_balance: profile.wallet_balance || 0
+            }
+          }
+        ]);
+
+        return res.json({ success: true, newBalance: profile.wallet_balance || 0, message: "Wallet updated successfully" });
+      }
+
+      // 3. Calculate new balance
       const finalAmount = type === 'credit' ? updateAmount : -updateAmount;
       const newBalance = (profile.wallet_balance || 0) + finalAmount;
 
@@ -665,6 +729,145 @@ const OPERATOR_MAPPING: Record<string, string> = {
       res.status(500).json({ error: "Internal server error", details: error.message });
     }
   });
+
+// Admin MPIN Reset Endpoint
+app.post("/api/admin/reset-mpin", async (req, res) => {
+  const { userId, tempMpin, action } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: "User ID is required" });
+  }
+
+  try {
+    let updateData = {};
+    if (action === 'reject') {
+      updateData = { mpin: null };
+    } else {
+      if (!tempMpin) {
+        return res.status(400).json({ error: "Temporary MPIN is required for reset" });
+      }
+      updateData = { mpin: `TEMP:${tempMpin}` };
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId)
+      .select();
+
+    if (error) throw error;
+
+    res.json({ 
+      success: true, 
+      message: action === 'reject' ? "Request rejected" : "MPIN reset successful",
+      user: data[0]
+    });
+  } catch (error: any) {
+    console.error("MPIN reset error:", error);
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
+
+// Admin Process Wallet Request Endpoint
+app.post("/api/admin/process-wallet-request", async (req, res) => {
+  const { requestId, action, rejectReason } = req.body;
+
+  if (!requestId || !action) {
+    return res.status(400).json({ error: "Request ID and action are required" });
+  }
+
+  try {
+    // 1. Fetch the request
+    const { data: request, error: fetchError } = await supabase
+      .from('transactions')
+      .select('*, profiles:user_id(wallet_balance)')
+      .eq('id', requestId)
+      .single();
+
+    if (fetchError || !request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    if (request.status !== 'pending') {
+      return res.status(400).json({ error: "Request already processed" });
+    }
+
+    const refNumber = request.details?.refNumber;
+
+    // 2. If approving, check for duplicates and update balance
+    if (action === 'approve') {
+      // Check for duplicate UTRs already approved
+      if (refNumber) {
+        const { data: duplicate } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('type', 'wallet_add')
+          .eq('status', 'success')
+          .filter('details->>refNumber', 'eq', refNumber)
+          .neq('id', requestId)
+          .limit(1);
+
+        if (duplicate && duplicate.length > 0) {
+          return res.status(400).json({ error: "This Reference Number (UTR) has already been approved!" });
+        }
+      }
+
+      // Update user balance
+      const currentBalance = request.profiles?.wallet_balance || 0;
+      const newBalance = currentBalance + request.amount;
+
+      const { error: balanceError } = await supabase
+        .from('profiles')
+        .update({ wallet_balance: newBalance })
+        .eq('id', request.user_id);
+
+      if (balanceError) throw balanceError;
+
+      // Auto-reject other pending requests with same UTR
+      if (refNumber) {
+        await supabase
+          .from('transactions')
+          .update({ 
+            status: 'failed',
+            details: {
+              ...request.details,
+              autoRejected: true,
+              rejectReason: 'Duplicate UTR - Another request approved.',
+              processedAt: new Date().toISOString(),
+              processedBy: 'system'
+            }
+          })
+          .eq('type', 'wallet_add')
+          .eq('status', 'pending')
+          .filter('details->>refNumber', 'eq', refNumber)
+          .neq('id', requestId);
+      }
+    }
+
+    // 3. Update transaction status
+    const newBalance = action === 'approve' ? (request.profiles?.wallet_balance || 0) + request.amount : request.profiles?.wallet_balance || 0;
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({ 
+        status: action === 'approve' ? 'success' : 'failed',
+        details: {
+          ...(request.details || {}),
+          processedAt: new Date().toISOString(),
+          processedBy: 'admin',
+          rejectReason: action === 'reject' ? rejectReason : null,
+          closing_balance: newBalance
+        }
+      })
+      .eq('id', requestId);
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, message: `Request ${action}ed successfully` });
+  } catch (error: any) {
+    console.error("Process wallet request error:", error);
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
 
 // --- VITE MIDDLEWARE OR STATIC SERVING ---
 if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {

@@ -24,10 +24,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ScrollArea } from '../ui/scroll-area';
 
 const operators = [
-  { id: 'Airtel', name: 'Airtel', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/Airtel_logo.svg/256px-Airtel_logo.svg.png' },
-  { id: 'Jio', name: 'Jio', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Reliance_Jio_Logo.svg/256px-Reliance_Jio_Logo.svg.png' },
-  { id: 'Vi', name: 'Vi', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Vi_logo.svg/256px-Vi_logo.svg.png' },
-  { id: 'BSNL', name: 'BSNL', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/d/d7/BSNL_Logo.svg/256px-BSNL_Logo.svg.png' }
+  { id: 'Airtel', name: 'Airtel', logo: 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png' },
+  { id: 'Jio', name: 'Jio', logo: 'https://img.sanishtech.com/u/e53166a350f4b2ff2add92dab3fb8471.png' },
+  { id: 'Vi', name: 'Vi', logo: 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg' },
+  { id: 'BSNL', name: 'BSNL', logo: 'https://img.sanishtech.com/u/5500e251803fa7db0bb8ab9d037a72a9.webp' }
 ];
 
 const circles = [
@@ -190,7 +190,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               operator: formData.operator,
               state: formData.state,
               txnId: transactionId,
-              api_response: apiData
+              api_response: apiData,
+              closing_balance: status === 'success' ? (profile?.wallet_balance || 0) - amount : profile?.wallet_balance || 0
             },
             retailer_name: profile?.name,
             retailer_mobile: profile?.mobile
@@ -328,6 +329,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                         value={formData.mobile}
                         onChange={(e) => setFormData({...formData, mobile: e.target.value})}
                         maxLength={10}
+                        inputMode="numeric"
                       />
                     </div>
                     <Contact2 className="h-6 w-6 text-blue-700" />
@@ -436,6 +438,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                         type="number"
                         value={formData.amount}
                         onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                        inputMode="numeric"
                       />
                     </div>
                     <Button 
@@ -499,6 +502,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                       maxLength={4}
                       value={formData.mpin}
                       onChange={(e) => setFormData({...formData, mpin: e.target.value})}
+                      inputMode="numeric"
                     />
                   </div>
                   <Button 

@@ -29,10 +29,10 @@ export function TransactionManagement({ transactions, users }: TransactionManage
 
   const getOperatorLogo = (operator: string) => {
     const op = operator?.toLowerCase() || '';
-    if (op.includes('airtel')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Airtel_logo-icon.png/600px-Airtel_logo-icon.png';
-    if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Vi_logo.svg/1200px-Vi_logo.svg.png';
-    if (op.includes('jio')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Reliance_Jio_Logo.svg/1200px-Reliance_Jio_Logo.svg.png';
-    if (op.includes('bsnl')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/BSNL_Logo.svg/1200px-BSNL_Logo.svg.png';
+    if (op.includes('airtel')) return 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png';
+    if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg';
+    if (op.includes('jio')) return 'https://img.sanishtech.com/u/e53166a350f4b2ff2add92dab3fb8471.png';
+    if (op.includes('bsnl')) return 'https://img.sanishtech.com/u/5500e251803fa7db0bb8ab9d037a72a9.webp';
     return `https://picsum.photos/seed/${op}/100/100`;
   };
 

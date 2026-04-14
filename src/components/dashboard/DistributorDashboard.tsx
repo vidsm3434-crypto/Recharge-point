@@ -723,6 +723,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                       placeholder="Enter amount" 
                       value={transferData.amount}
                       onChange={(e) => setTransferData({...transferData, amount: e.target.value})}
+                      inputMode="numeric"
                     />
                   </div>
                   <div className="space-y-2">
@@ -946,6 +947,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                       placeholder="Enter current MPIN"
                       value={distributorMpinData.oldMpin}
                       onChange={(e) => setDistributorMpinData({...distributorMpinData, oldMpin: e.target.value})}
+                      inputMode="numeric"
                     />
                   </div>
                   <div className="space-y-2">
@@ -956,6 +958,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                       placeholder="Enter new MPIN"
                       value={distributorMpinData.newMpin}
                       onChange={(e) => setDistributorMpinData({...distributorMpinData, newMpin: e.target.value})}
+                      inputMode="numeric"
                     />
                   </div>
                   <div className="space-y-2">
@@ -966,6 +969,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                       placeholder="Confirm new MPIN"
                       value={distributorMpinData.confirmMpin}
                       onChange={(e) => setDistributorMpinData({...distributorMpinData, confirmMpin: e.target.value})}
+                      inputMode="numeric"
                     />
                   </div>
                   <Button className="w-full bg-indigo-600" type="submit" disabled={loading}>
@@ -1047,6 +1051,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                 maxLength={10}
                 value={newRetailer.mobile}
                 onChange={(e) => setNewRetailer({...newRetailer, mobile: e.target.value})}
+                inputMode="numeric"
               />
             </div>
             <div className="space-y-2">
@@ -1109,6 +1114,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                 placeholder="Enter amount" 
                 value={transferData.amount}
                 onChange={(e) => setTransferData({...transferData, amount: e.target.value})}
+                inputMode="numeric"
               />
             </div>
             <div className="space-y-2">
@@ -1156,6 +1162,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                 placeholder="Enter amount" 
                 value={transferData.amount}
                 onChange={(e) => setTransferData({...transferData, amount: e.target.value})}
+                inputMode="numeric"
               />
             </div>
             <div className="space-y-2">
@@ -1299,6 +1306,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                 placeholder="Enter new MPIN"
                 value={mpinResetData.newMpin}
                 onChange={(e) => setMpinResetData({...mpinResetData, newMpin: e.target.value})}
+                inputMode="numeric"
               />
             </div>
             <Button className="w-full bg-indigo-600" type="submit" disabled={loading}>
@@ -1329,6 +1337,36 @@ function NavButton({ active, icon, label, onClick }: { active: boolean, icon: an
 
 function TransactionItem({ txn, currentUserId }: { txn: any, currentUserId: string }) {
   const isDebit = txn.details?.type === 'debit' || txn.user_id === currentUserId;
+  const [isComplained, setIsComplained] = useState(txn.details?.complaint || false);
+
+  const handleComplain = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isComplained) {
+      toast.info('Complaint already registered for this transaction.');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          details: {
+            ...txn.details,
+            complaint: true,
+            complaintDate: new Date().toISOString()
+          }
+        })
+        .eq('id', txn.id);
+
+      if (error) throw error;
+      
+      setIsComplained(true);
+      toast.success('Complaint registered successfully! Admin will review it.');
+    } catch (error: any) {
+      console.error('Error registering complaint:', error);
+      toast.error('Failed to register complaint.');
+    }
+  };
   
   return (
     <Card className="border-none shadow-sm overflow-hidden">
@@ -1358,14 +1396,24 @@ function TransactionItem({ txn, currentUserId }: { txn: any, currentUserId: stri
               {isDebit ? '-' : '+'}₹{txn.amount?.toFixed(2)}
             </p>
             <p className="text-[9px] text-slate-400 font-mono">{txn.details?.txnId}</p>
+            {txn.details?.closing_balance !== undefined && (
+              <p className="text-[9px] text-slate-500 font-medium mt-1">
+                Bal: ₹{txn.details.closing_balance.toFixed(2)}
+              </p>
+            )}
           </div>
         </div>
-        {txn.profiles && txn.user_id !== currentUserId && (
-          <div className="mt-2 pt-2 border-t border-slate-50 flex items-center justify-between text-[10px]">
-            <span className="text-slate-500">Retailer:</span>
-            <span className="font-medium text-slate-700">{txn.profiles.name} ({txn.profiles.mobile})</span>
-          </div>
-        )}
+        <div className="mt-3 pt-3 border-t border-slate-50 flex items-center justify-between">
+          {txn.profiles && txn.user_id !== currentUserId ? (
+            <div className="text-[10px]">
+              <span className="text-slate-500">Retailer:</span>
+              <span className="font-medium text-slate-700 ml-1">{txn.profiles.name} ({txn.profiles.mobile})</span>
+            </div>
+          ) : <div />}
+          <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 border-red-200 text-red-600 rounded hover:bg-red-50" onClick={handleComplain}>
+            {isComplained ? 'Complained' : 'Complain'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

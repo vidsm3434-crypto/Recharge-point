@@ -124,6 +124,7 @@ export function Login({ onSignup, onHelp, initialMobile = '' }: LoginProps) {
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   maxLength={loginMethod === 'mobile' ? 10 : undefined}
+                  inputMode={loginMethod === 'mobile' ? 'numeric' : 'text'}
                 />
               </div>
             </div>

@@ -167,7 +167,7 @@ export function Signup({ onBack, onSwitchToLogin }: SignupProps) {
               <Label htmlFor="mobile">Mobile Number</Label>
               <div className="relative">
                 <Smartphone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                <Input id="mobile" placeholder="7872303434" className="pl-10" value={formData.mobile} onChange={handleChange} maxLength={10} />
+                <Input id="mobile" placeholder="7872303434" className="pl-10" value={formData.mobile} onChange={handleChange} maxLength={10} inputMode="numeric" />
               </div>
             </div>
             <div className="space-y-2">

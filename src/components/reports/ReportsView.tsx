@@ -126,6 +126,40 @@ export function ReportsView() {
     };
   }, [profile]);
 
+  const handleComplain = async (txn: any) => {
+    if (txn.details?.complaint) {
+      toast.info('Complaint already registered for this transaction.');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          details: {
+            ...txn.details,
+            complaint: true,
+            complaintDate: new Date().toISOString()
+          }
+        })
+        .eq('id', txn.id);
+
+      if (error) throw error;
+      
+      toast.success('Complaint registered successfully! Admin will review it.');
+      
+      // Update local state
+      setTransactions(prev => prev.map(t => 
+        t.id === txn.id 
+          ? { ...t, details: { ...t.details, complaint: true, complaintDate: new Date().toISOString() } }
+          : t
+      ));
+    } catch (error: any) {
+      console.error('Error registering complaint:', error);
+      toast.error('Failed to register complaint.');
+    }
+  };
+
   const reportOptions = [
     { id: 'transactions', label: 'Transactions History', icon: <ClipboardList className="text-blue-600" /> },
     { id: 'wallet', label: 'Wallet History', icon: <History className="text-blue-600" /> },
@@ -145,7 +179,7 @@ export function ReportsView() {
         data = data.filter(t => t.type === 'recharge');
         break;
       case 'wallet':
-        data = data.filter(t => t.type === 'wallet_add');
+        // Show all transactions for wallet history
         break;
       case 'commission':
         data = data.filter(t => t.details?.commission);
@@ -177,10 +211,10 @@ export function ReportsView() {
 
   const getOperatorLogo = (operator: string) => {
     const op = operator?.toLowerCase() || '';
-    if (op.includes('airtel')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Airtel_logo-icon.png/600px-Airtel_logo-icon.png';
-    if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Vi_logo.svg/1200px-Vi_logo.svg.png';
-    if (op.includes('jio')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Reliance_Jio_Logo.svg/1200px-Reliance_Jio_Logo.svg.png';
-    if (op.includes('bsnl')) return 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/BSNL_Logo.svg/1200px-BSNL_Logo.svg.png';
+    if (op.includes('airtel')) return 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png';
+    if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg';
+    if (op.includes('jio')) return 'https://img.sanishtech.com/u/e53166a350f4b2ff2add92dab3fb8471.png';
+    if (op.includes('bsnl')) return 'https://img.sanishtech.com/u/5500e251803fa7db0bb8ab9d037a72a9.webp';
     return `https://picsum.photos/seed/${op}/100/100`;
   };
 
@@ -246,7 +280,10 @@ export function ReportsView() {
               ) : filteredData.length === 0 ? (
                 <p className="py-10 text-center text-sm text-slate-500">No records found</p>
               ) : (
-                filteredData.map((txn) => (
+                filteredData.map((txn) => {
+                  const isDebit = txn.type === 'recharge' || txn.type === 'wallet_deduct' || txn.details?.type === 'debit';
+                  
+                  return (
                   <Card 
                     key={txn.id} 
                     className="border border-slate-100 shadow-sm rounded-xl overflow-hidden bg-white cursor-pointer active:scale-[0.98] transition-transform"
@@ -258,48 +295,70 @@ export function ReportsView() {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start mb-1">
                         <p className="text-sm font-bold text-slate-900">Order Id :{txn.details?.txnId || txn.id.slice(0, 12).toUpperCase()}</p>
-                        <p className="text-sm font-bold text-slate-900">₹{txn.amount}</p>
+                        <p className={cn(
+                          "text-sm font-bold",
+                          isDebit ? "text-red-600" : "text-green-600"
+                        )}>
+                          {isDebit ? '-' : '+'}₹{txn.amount}
+                        </p>
                       </div>
                       
                       <div className="flex justify-between items-center mb-4">
                         <p className="text-[11px] text-slate-500 font-medium">
                           {new Date(txn.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
-                        <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-blue-200 text-blue-600 rounded-md hover:bg-blue-50">
-                          Repay <RefreshCw className="h-3 w-3" />
-                        </Button>
+                        <div className="flex gap-2">
+                          {txn.type === 'recharge' && (
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-blue-200 text-blue-600 rounded-md hover:bg-blue-50" onClick={(e) => { e.stopPropagation(); toast.info('Repay clicked'); }}>
+                              Repay <RefreshCw className="h-3 w-3" />
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-red-200 text-red-600 rounded-md hover:bg-red-50" onClick={(e) => { e.stopPropagation(); handleComplain(txn); }}>
+                            {txn.details?.complaint ? 'Complained' : 'Complain'}
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-4 mb-4">
                         <div className="h-14 w-14 rounded-full overflow-hidden bg-slate-50 flex items-center justify-center border border-slate-100">
                           <img 
                             src={getOperatorLogo(txn.details?.operator)} 
-                            alt={txn.details?.operator}
+                            alt={txn.details?.operator || 'Logo'}
                             className="h-10 w-10 object-contain"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/wallet/100/100';
+                            }}
                           />
                         </div>
                         <div className="flex-1">
-                          <p className="font-bold text-slate-900 text-base">{txn.details?.operator || (txn.type === 'wallet_add' ? 'Wallet Load' : 'Transaction')}</p>
-                          <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || 'N/A'}</p>
+                          <p className="font-bold text-slate-900 text-base">
+                            {txn.details?.operator || (txn.type === 'wallet_add' ? (txn.details?.gateway ? 'Online Load' : txn.details?.distributor_id ? 'Distributor Load' : 'Wallet Load') : txn.type === 'wallet_deduct' ? 'Wallet Deduct' : txn.type === 'refund' ? 'Refund' : txn.type === 'commission' ? 'Commission' : 'Transaction')}
+                          </p>
+                          <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || txn.details?.note || 'N/A'}</p>
                         </div>
-                        <div className="self-end">
+                        <div className="self-end text-right">
                           <div className={cn(
-                            "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider",
+                            "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider mb-1 inline-block",
                             txn.status === 'success' ? "border-green-500 text-green-600 bg-white" : 
                             txn.status === 'failed' ? "border-red-500 text-red-600 bg-white" : "border-amber-500 text-amber-600 bg-white"
                           )}>
                             {txn.status}
                           </div>
+                          {txn.details?.closing_balance !== undefined && (
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              Bal: ₹{txn.details.closing_balance.toFixed(2)}
+                            </p>
+                          )}
                         </div>
                       </div>
 
                       <p className="text-[11px] text-slate-500 font-medium">
-                        Operator Ref: {txn.details?.opid || txn.details?.txnId || 'N/A'}
+                        Operator Ref: {txn.details?.opid || txn.details?.refNumber || txn.details?.txnId || 'N/A'}
                       </p>
                     </CardContent>
                   </Card>
-                ))
+                )})
               )}
             </div>
           </ScrollArea>

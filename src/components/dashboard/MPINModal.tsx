@@ -28,25 +28,47 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
   const actualMpin = isResetSetup ? profile?.mpin?.split(':')[1] : profile?.mpin;
 
   const handleSetup = async () => {
-    if (isResetSetup && formData.oldMpin !== actualMpin) {
-      toast.error('Incorrect temporary MPIN');
-      return;
-    }
-    if (formData.newMpin.length !== 4 || formData.confirmMpin.length !== 4) {
-      toast.error('MPIN must be 4 digits');
-      return;
-    }
-    if (formData.newMpin === actualMpin) {
-      toast.error('New MPIN cannot be same as temporary MPIN');
-      return;
-    }
-    if (formData.newMpin !== formData.confirmMpin) {
-      toast.error('MPINs do not match');
-      return;
-    }
-
     setLoading(true);
     try {
+      // Fetch latest profile to ensure we have the correct MPIN (especially if it was just reset)
+      await fetchProfile(profile!.id);
+      
+      // Get the latest values after fetch
+      const currentProfile = profile; // This might still be the old one if fetchProfile is async and doesn't return data
+      // Actually, fetchProfile in AuthContext updates the state. 
+      // Let's use the direct supabase call to be 100% sure for validation
+      const { data: latestProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('mpin')
+        .eq('id', profile?.id)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const isReset = latestProfile?.mpin?.startsWith('TEMP:');
+      const actual = isReset ? latestProfile?.mpin?.split(':')[1] : latestProfile?.mpin;
+
+      if (isReset && formData.oldMpin !== actual) {
+        toast.error('Incorrect temporary MPIN');
+        setLoading(false);
+        return;
+      }
+      if (formData.newMpin.length !== 4 || formData.confirmMpin.length !== 4) {
+        toast.error('MPIN must be 4 digits');
+        setLoading(false);
+        return;
+      }
+      if (formData.newMpin === actual) {
+        toast.error('New MPIN cannot be same as temporary MPIN');
+        setLoading(false);
+        return;
+      }
+      if (formData.newMpin !== formData.confirmMpin) {
+        toast.error('MPINs do not match');
+        setLoading(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({ 
@@ -67,21 +89,36 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
   };
 
   const handleChange = async () => {
-    if (formData.oldMpin !== actualMpin) {
-      toast.error('Incorrect old MPIN');
-      return;
-    }
-    if (formData.newMpin.length !== 4) {
-      toast.error('New MPIN must be 4 digits');
-      return;
-    }
-    if (formData.newMpin !== formData.confirmMpin) {
-      toast.error('New MPINs do not match');
-      return;
-    }
-
     setLoading(true);
     try {
+      // Fetch latest profile for validation
+      const { data: latestProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('mpin')
+        .eq('id', profile?.id)
+        .single();
+      
+      if (fetchError) throw fetchError;
+
+      const isReset = latestProfile?.mpin?.startsWith('TEMP:');
+      const actual = isReset ? latestProfile?.mpin?.split(':')[1] : latestProfile?.mpin;
+
+      if (formData.oldMpin !== actual) {
+        toast.error('Incorrect old MPIN');
+        setLoading(false);
+        return;
+      }
+      if (formData.newMpin.length !== 4) {
+        toast.error('New MPIN must be 4 digits');
+        setLoading(false);
+        return;
+      }
+      if (formData.newMpin !== formData.confirmMpin) {
+        toast.error('New MPINs do not match');
+        setLoading(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({ mpin: formData.newMpin })
@@ -150,6 +187,7 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
                 className="text-center text-2xl tracking-[1em]"
                 value={formData.oldMpin}
                 onChange={(e) => setFormData({ ...formData, oldMpin: e.target.value })}
+                inputMode="numeric"
               />
               {isResetSetup && <p className="text-[10px] text-slate-500">Enter the temporary MPIN provided by admin</p>}
             </div>
@@ -167,6 +205,7 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
                   className="text-center text-2xl tracking-[1em]"
                   value={formData.newMpin}
                   onChange={(e) => setFormData({ ...formData, newMpin: e.target.value })}
+                  inputMode="numeric"
                 />
               </div>
               <div className="space-y-2">
@@ -179,6 +218,7 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
                   className="text-center text-2xl tracking-[1em]"
                   value={formData.confirmMpin}
                   onChange={(e) => setFormData({ ...formData, confirmMpin: e.target.value })}
+                  inputMode="numeric"
                 />
               </div>
             </>

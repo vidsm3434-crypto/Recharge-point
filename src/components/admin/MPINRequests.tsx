@@ -44,14 +44,18 @@ export function MPINRequests() {
     const newTempMpin = customMpin || Math.floor(1000 + Math.random() * 9000).toString();
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          mpin: `TEMP:${newTempMpin}`
+      const response = await fetch('/api/admin/reset-mpin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          tempMpin: newTempMpin,
+          action: 'reset'
         })
-        .eq('id', user.id);
+      });
 
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Reset failed');
       
       // Immediately remove from local state for better UX
       setRequests(current => current.filter(r => r.id !== user.id));
@@ -73,30 +77,38 @@ export function MPINRequests() {
       window.open(whatsappUrl, '_blank');
 
       fetchRequests();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reset error:', error);
-      toast.error('Reset failed. Please try again.');
+      toast.error(error.message || 'Reset failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleReject = async (userId: string) => {
+    setLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ mpin: null }) // Setting to null forces them to set up a new one
-        .eq('id', userId);
+      const response = await fetch('/api/admin/reset-mpin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          action: 'reject'
+        })
+      });
 
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Action failed');
       
       // Immediately remove from local state
       setRequests(current => current.filter(r => r.id !== userId));
       
       toast.success('Request rejected. User can now set a new MPIN.');
       fetchRequests();
-    } catch (error) {
-      toast.error('Action failed');
+    } catch (error: any) {
+      toast.error(error.message || 'Action failed');
+    } finally {
+      setLoading(false);
     }
   };
 
