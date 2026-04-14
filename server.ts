@@ -156,16 +156,20 @@ const OPERATOR_MAPPING: Record<string, string> = {
     const { mobile, operator, amount, circle, userId } = req.body;
 
     try {
-      // 1. Fetch user profile to check email
-      const { data: userProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('id', userId)
-        .single();
+      let userProfile = null;
+      if (userId) {
+        // 1. Fetch user profile to check email
+        const { data, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('id', userId)
+          .maybeSingle();
 
-      if (profileError) {
-        console.error("Error fetching user profile:", profileError);
-        return res.status(500).json({ error: "Failed to fetch user profile" });
+        if (profileError) {
+          console.error("Error fetching user profile:", profileError);
+        } else {
+          userProfile = data;
+        }
       }
 
       const orderId = `TXN_${Date.now()}`;
@@ -403,7 +407,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
           .from("profiles")
           .select("wallet_balance")
           .eq("id", transaction.user_id)
-          .single();
+          .maybeSingle();
 
         if (profile) {
           await supabase
@@ -456,7 +460,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
         .from('profiles')
         .select('id')
         .eq('mobile', mobile)
-        .single();
+        .maybeSingle();
       
       if (existingMobile) {
         return res.status(400).json({ error: "Mobile number already registered" });
@@ -560,13 +564,13 @@ const OPERATOR_MAPPING: Record<string, string> = {
         .from('profiles')
         .select('*')
         .eq('id', fromUserId)
-        .single();
+        .maybeSingle();
 
       const { data: toProfile, error: toError } = await adminSupabase
         .from('profiles')
         .select('*')
         .eq('id', toUserId)
-        .single();
+        .maybeSingle();
 
       if (fromError || !fromProfile) return res.status(404).json({ error: "Source user not found" });
       if (toError || !toProfile) return res.status(404).json({ error: "Target user not found" });
@@ -663,7 +667,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (profileError || !profile) return res.status(404).json({ error: "User not found" });
 
@@ -782,7 +786,7 @@ app.post("/api/admin/process-wallet-request", async (req, res) => {
       .from('transactions')
       .select('*, profiles:user_id(wallet_balance)')
       .eq('id', requestId)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !request) {
       return res.status(404).json({ error: "Request not found" });

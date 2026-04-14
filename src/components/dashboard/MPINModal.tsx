@@ -41,7 +41,7 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
         .from('profiles')
         .select('mpin')
         .eq('id', profile?.id)
-        .single();
+        .maybeSingle();
       
       if (fetchError) throw fetchError;
       
@@ -96,7 +96,7 @@ export function MPINModal({ open, onClose, mode: initialMode }: MPINModalProps) 
         .from('profiles')
         .select('mpin')
         .eq('id', profile?.id)
-        .single();
+        .maybeSingle();
       
       if (fetchError) throw fetchError;
 

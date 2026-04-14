@@ -157,7 +157,7 @@ export function AddBalanceModal({ open, onClose }: AddBalanceModalProps) {
         .from('config')
         .select('value')
         .eq('key', 'global')
-        .single();
+        .maybeSingle();
       
       const razorpayKey = configData?.value?.payment?.razorpayKeyId;
 

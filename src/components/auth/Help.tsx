@@ -22,7 +22,7 @@ export function Help({ onBack }: HelpProps) {
         .from('config')
         .select('value')
         .eq('key', 'global')
-        .single();
+        .maybeSingle();
       
       if (data && !error) {
         setAdminMobile(data.value.adminMobile || '7872303434');
@@ -44,7 +44,7 @@ export function Help({ onBack }: HelpProps) {
         .from('profiles')
         .select('id')
         .eq('mobile', mobile)
-        .single();
+        .maybeSingle();
       
       if (error || !data) {
         toast.error('User not found');

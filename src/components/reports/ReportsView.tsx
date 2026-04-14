@@ -109,7 +109,7 @@ export function ReportsView() {
               .from('profiles')
               .select('distributor_id')
               .eq('id', newTxn.user_id)
-              .single();
+              .maybeSingle();
             
             if (data?.distributor_id === profile.id) {
               setTransactions(prev => [newTxn, ...prev].slice(0, 200));

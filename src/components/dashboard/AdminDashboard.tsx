@@ -105,7 +105,7 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
         .from('config')
         .select('value')
         .eq('key', 'global')
-        .single();
+        .maybeSingle();
       
       if (configData) {
         setConfig(configData.value);

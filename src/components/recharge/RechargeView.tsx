@@ -217,7 +217,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
             .from('profiles')
             .select('id, wallet_balance')
             .eq('id', profile.distributor_id)
-            .single();
+            .maybeSingle();
 
           if (!distFetchError && distributor) {
             const commissionRate = 0.02; 
