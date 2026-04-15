@@ -21,10 +21,13 @@ export function TransactionManagement({ transactions, users }: TransactionManage
 
   const filteredTransactions = transactions.filter(t => {
     const user = t.profiles || t.user_profile;
-    const matchesSearch = t.details?.mobile?.includes(searchTerm) || 
-                         t.details?.txnId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user?.retailer_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      (t.details?.mobile || '').includes(searchTerm) || 
+      (t.details?.txnId || '').toLowerCase().includes(searchLower) ||
+      (user?.name || '').toLowerCase().includes(searchLower) ||
+      (user?.retailer_id || '').toLowerCase().includes(searchLower) ||
+      (t.retailer_name || '').toLowerCase().includes(searchLower);
     const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -98,7 +101,7 @@ export function TransactionManagement({ transactions, users }: TransactionManage
                   
                   <div className="flex justify-between items-center mb-4">
                     <p className="text-[11px] text-slate-500 font-medium">
-                      {new Date(txn.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                     <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-blue-200 text-blue-600 rounded-md hover:bg-blue-50">
                       Repay <RefreshCw className="h-3 w-3" />

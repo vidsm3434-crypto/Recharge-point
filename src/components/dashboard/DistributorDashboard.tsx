@@ -141,25 +141,41 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
     if (!profile?.id) return;
     
     try {
+      // 1. Fetch all retailers for this distributor to get their IDs
+      const { data: retailersData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('distributor_id', profile.id);
+      
+      const retailerIds = (retailersData || []).map(r => r.id);
+      const allRelevantIds = [profile.id, ...retailerIds];
+
+      // 2. Fetch transactions for the distributor and all their retailers
       const { data, error } = await supabase
         .from('transactions')
-        .select('*, profiles(name, mobile, retailer_id, distributor_id)')
-        .or(`user_id.eq.${profile.id},details->>distributor_id.eq.${profile.id}`)
+        .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)')
+        .in('user_id', allRelevantIds)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(1000);
       
       if (error) {
         console.warn('Join query failed in DistributorDashboard, trying separate fetch:', error);
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('transactions')
           .select('*')
-          .or(`user_id.eq.${profile.id},details->>distributor_id.eq.${profile.id}`)
-          .order('created_at', { ascending: false })
-          .limit(50);
+          .in('user_id', allRelevantIds)
+          .limit(1000);
         
         if (fallbackError) throw fallbackError;
         
         if (fallbackData) {
+          // Sort in JS
+          fallbackData.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.timestamp || 0).getTime();
+            const dateB = new Date(b.created_at || b.timestamp || 0).getTime();
+            return dateB - dateA;
+          });
+
           const userIds = [...new Set(fallbackData.map(t => t.user_id))].filter(Boolean);
           let profiles: any[] = [];
           

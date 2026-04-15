@@ -98,19 +98,28 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
     // Category Filtering
     switch (view) {
       case 'transactions':
-        data = data.filter(t => t.type === 'recharge');
+        data = data.filter(t => {
+          const type = (t.type || '').toLowerCase();
+          return !t.type || type === 'recharge' || type.includes('recharge') || type === 'mobile';
+        });
         break;
       case 'wallet':
-        data = data.filter(t => t.type === 'wallet_add');
+        data = data.filter(t => {
+          const type = (t.type || '').toLowerCase();
+          return type === 'wallet_add' || type === 'wallet' || type === 'deposit' || type.includes('wallet');
+        });
         break;
       case 'commission':
-        data = data.filter(t => t.type === 'commission');
+        data = data.filter(t => {
+          const type = (t.type || '').toLowerCase();
+          return type === 'commission' || type.includes('commission');
+        });
         break;
       case 'online_deposit':
-        data = data.filter(t => t.type === 'wallet_add' && t.details?.gateway);
+        data = data.filter(t => t.type?.toLowerCase() === 'wallet_add' && t.details?.gateway);
         break;
       case 'manual_deposit':
-        data = data.filter(t => t.type === 'wallet_add' && t.details?.adminAction);
+        data = data.filter(t => t.type?.toLowerCase() === 'wallet_add' && t.details?.adminAction);
         break;
       case 'complaints':
         data = data.filter(t => t.details?.complaint);
@@ -122,21 +131,32 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
     // Search Filtering
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      data = data.filter(t => 
-        t.details?.mobile?.includes(q) || 
-        t.retailer_name?.toLowerCase().includes(q) ||
-        t.details?.txnId?.toLowerCase().includes(q)
-      );
+      data = data.filter(t => {
+        const mobile = t.details?.mobile || '';
+        const retailerName = t.retailer_name || t.profiles?.name || '';
+        const txnId = t.details?.txnId || t.id || '';
+        return mobile.includes(q) || 
+               retailerName.toLowerCase().includes(q) ||
+               txnId.toLowerCase().includes(q);
+      });
     }
 
     // Date Filtering
     if (dateRange.start) {
-      data = data.filter(t => new Date(t.created_at || t.timestamp) >= new Date(dateRange.start));
+      data = data.filter(t => {
+        const dateStr = t.created_at || t.timestamp;
+        if (!dateStr) return true; // Don't filter out if no date
+        return new Date(dateStr) >= new Date(dateRange.start);
+      });
     }
     if (dateRange.end) {
       const end = new Date(dateRange.end);
       end.setHours(23, 59, 59, 999);
-      data = data.filter(t => new Date(t.created_at || t.timestamp) <= end);
+      data = data.filter(t => {
+        const dateStr = t.created_at || t.timestamp;
+        if (!dateStr) return true; // Don't filter out if no date
+        return new Date(dateStr) <= end;
+      });
     }
 
     return data;
@@ -341,7 +361,7 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
                   
                   <div className="flex justify-between items-center mb-4">
                     <p className="text-[11px] text-slate-500 font-medium">
-                      {new Date(txn.created_at || txn.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.created_at || txn.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                     <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-blue-200 text-blue-600 rounded-md hover:bg-blue-50">
                       Repay <RefreshCw className="h-3 w-3" />

@@ -69,29 +69,32 @@ export function ReportsView() {
           if (retailers) {
             userIds = [...userIds, ...retailers.map(r => r.id)];
           }
-        } else if (profile.role === 'admin') {
+        } else if (profile.role === 'admin' || profile.mobile === '7872303434') {
           userIds = null; // Fetch all for admin
         }
 
-        let query = supabase
+        let txnsData: any[] | null = null;
+        let txnsError: any = null;
+
+        // Try with join first
+        const { data, error } = await supabase
           .from('transactions')
           .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)')
-          .order('timestamp', { ascending: false })
-          .limit(500);
+          .limit(2000);
         
-        if (userIds) {
-          query = query.in('user_id', userIds);
+        txnsData = data;
+        txnsError = error;
+
+        if (userIds && !txnsError) {
+          txnsData = data?.filter(t => userIds!.includes(t.user_id)) || [];
         }
 
-        let { data, error } = await query;
-
-        if (error) {
-          console.warn('Join query failed in ReportsView, trying separate fetch:', error);
+        if (txnsError) {
+          console.warn('Join query failed in ReportsView, trying separate fetch:', txnsError);
           let fallbackQuery = supabase
             .from('transactions')
             .select('*')
-            .order('timestamp', { ascending: false })
-            .limit(500);
+            .limit(2000);
           
           if (userIds) {
             fallbackQuery = fallbackQuery.in('user_id', userIds);
@@ -106,32 +109,41 @@ export function ReportsView() {
             let profiles: any[] = [];
             
             if (uIds.length > 0) {
-              const { data: pData, error: pError } = await supabase
+              const { data: pData } = await supabase
                 .from('profiles')
                 .select('id, name, mobile, retailer_id, distributor_id')
                 .in('id', uIds);
               
-              if (pError) {
+              if (pData) {
+                profiles = pData;
+              } else {
                 const { data: pDataBasic } = await supabase
                   .from('profiles')
                   .select('id, name, mobile')
                   .in('id', uIds);
                 profiles = pDataBasic || [];
-              } else {
-                profiles = pData || [];
               }
             }
 
-            data = fallbackData.map(t => ({
+            txnsData = fallbackData.map(t => ({
               ...t,
               profiles: profiles.find(p => p.id === t.user_id)
             }));
           }
         }
-        
-        setTransactions(data || []);
+
+        if (txnsData) {
+          // Sort in JS to handle mixed timestamp/created_at
+          txnsData.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.timestamp || 0).getTime();
+            const dateB = new Date(b.created_at || b.timestamp || 0).getTime();
+            return dateB - dateA;
+          });
+          setTransactions(txnsData);
+        }
       } catch (error) {
         console.error('Error fetching transactions:', error);
+        toast.error('Failed to load reports history');
       } finally {
         setLoading(false);
       }

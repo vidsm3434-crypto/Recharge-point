@@ -132,6 +132,8 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
       let txnsError: any = null;
 
       try {
+        // Try to fetch with profiles join
+        // We use a more permissive order and fallback
         const { data, error } = await supabase
           .from('transactions')
           .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)')
@@ -140,37 +142,45 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
         txnsData = data;
         txnsError = error;
 
+        // If created_at order fails, try ordering by timestamp or just fetching without order
+        if (txnsError && txnsError.message?.includes('column "created_at" does not exist')) {
+          console.warn('created_at column missing, trying timestamp:');
+          const { data: tData, error: tError } = await supabase
+            .from('transactions')
+            .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)')
+            .order('timestamp', { ascending: false });
+          txnsData = tData;
+          txnsError = tError;
+        }
+
         if (txnsError) {
           console.warn('Join query failed, trying separate fetch:', txnsError);
+          // Fallback: Fetch transactions and profiles separately
           const { data: fallbackData, error: fallbackError } = await supabase
             .from('transactions')
             .select('*')
-            .order('created_at', { ascending: false });
+            .limit(2000); // Increased limit for "all history"
           
           if (fallbackError) throw fallbackError;
           
           if (fallbackData) {
+            // Sort in JS as a final fallback
+            fallbackData.sort((a, b) => {
+              const dateA = new Date(a.created_at || a.timestamp || 0).getTime();
+              const dateB = new Date(b.created_at || b.timestamp || 0).getTime();
+              return dateB - dateA;
+            });
+
             const userIds = [...new Set(fallbackData.map(t => t.user_id))].filter(Boolean);
             let profiles: any[] = [];
             
             if (userIds.length > 0) {
-              // Try to fetch with retailer_id first, fallback if it fails
               const { data: pData, error: pError } = await supabase
                 .from('profiles')
                 .select('id, name, mobile, retailer_id, distributor_id')
                 .in('id', userIds);
               
-              if (pError) {
-                console.warn('Profile fetch with retailer_id failed, trying basic fetch:', pError);
-                const { data: pDataBasic, error: pErrorBasic } = await supabase
-                  .from('profiles')
-                  .select('id, name, mobile')
-                  .in('id', userIds);
-                
-                if (!pErrorBasic) profiles = pDataBasic || [];
-              } else {
-                profiles = pData || [];
-              }
+              if (!pError) profiles = pData || [];
             }
 
             txnsData = fallbackData.map(t => ({
@@ -185,10 +195,19 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
       }
       
       if (txnsData) {
-        setTransactions(txnsData);
+        console.log('Total transactions fetched for admin:', txnsData.length);
+        // Ensure every transaction has a profiles object for the UI
+        const normalizedTxns = txnsData.map(t => ({
+          ...t,
+          profiles: t.profiles || { name: t.retailer_name || 'N/A', mobile: t.retailer_mobile || 'N/A' }
+        }));
+        setTransactions(normalizedTxns);
         // Count pending wallet requests
-        const pendingWallet = txnsData.filter(t => t.type === 'wallet_add' && t.status === 'pending').length;
+        const pendingWallet = normalizedTxns.filter(t => t.type === 'wallet_add' && t.status === 'pending').length;
         setPendingWalletRequests(pendingWallet);
+      } else {
+        console.warn('No transactions data returned from Supabase');
+        setTransactions([]);
       }
     } catch (error) {
       console.error(error);
@@ -199,6 +218,12 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
 
   const mpinChannelRef = useRef<any>(null);
   const walletChannelRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (activeSection === 'reports' || activeSection === 'transactions' || activeSection === 'dashboard') {
+      fetchData();
+    }
+  }, [activeSection]);
 
   useEffect(() => {
     fetchData();
@@ -509,6 +534,7 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
                   setActiveSection(item.id as AdminSection);
                   if (item.id === 'mpin_requests') setPendingMpinRequests(0);
                   if (item.id === 'wallet_requests') setPendingWalletRequests(0);
+                  if (item.id === 'transactions' || item.id === 'reports') fetchData();
                 }}
               >
                 <div className={cn(
@@ -582,6 +608,7 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
                           setIsSidebarOpen(false);
                           if (item.id === 'mpin_requests') setPendingMpinRequests(0);
                           if (item.id === 'wallet_requests') setPendingWalletRequests(0);
+                          if (item.id === 'transactions' || item.id === 'reports') fetchData();
                         }}
                       >
                         {item.icon}

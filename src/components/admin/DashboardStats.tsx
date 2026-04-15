@@ -17,7 +17,10 @@ export function DashboardStats({ users, transactions, onViewMpinRequests, onView
   const pendingWalletRequests = transactions.filter(t => t.type === 'wallet_add' && t.status === 'pending');
   
   const today = new Date().toISOString().split('T')[0];
-  const todayTxns = transactions.filter(t => (t.created_at || t.timestamp)?.startsWith(today));
+  const todayTxns = transactions.filter(t => {
+    const date = t.created_at || t.timestamp;
+    return date && date.startsWith(today);
+  });
   const successTxns = transactions.filter(t => t.status === 'success');
   const failedTxns = transactions.filter(t => t.status === 'failed');
 

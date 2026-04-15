@@ -55,6 +55,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
   const [processingStep, setProcessingStep] = useState(0);
   const [plans, setPlans] = useState<any[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
+  const [isContinuing, setIsContinuing] = useState(false);
 
   // Auto-detect operator
   React.useEffect(() => {
@@ -166,18 +167,28 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
     setStep(2); // Move to Processing Screen
     setProcessingStep(1); // Step 1: Transaction Initiated
     
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setProcessingStep(2); // Step 2: Wallet Deducted
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setProcessingStep(3); // Step 3: Show OK Button
+  };
+
+  const continueRecharge = async () => {
+    if (isContinuing) return;
+    setIsContinuing(true);
+    
+    // Move to result screen immediately in "Processing" state
+    setResult({
+      status: 'processing',
+      mobile: formData.mobile,
+      amount: formData.amount,
+      date: new Date().toLocaleString(),
+      txnId: `RBH${Date.now()}`
+    });
+    setStep(3);
+    
     try {
       const amount = parseFloat(formData.amount);
-      
-      // Step 1: Initiated
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Step 2: Wallet Deducted
-      setProcessingStep(2);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Step 3: Recharge Processing (API Call)
-      setProcessingStep(3);
       
       // Call our backend API to process the recharge
       const apiResponse = await fetch('/api/recharge/process', {
@@ -204,14 +215,6 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
           status = 'failed';
         }
       }
-
-      if (status === 'success' || status === 'pending') {
-        setProcessingStep(4); // Step 3: Success
-      } else {
-        setProcessingStep(5); // Step 3: Failed
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1500));
 
       const transactionId = apiData.txnId || apiData.txid || `RBH${Date.now()}`;
 
@@ -302,7 +305,6 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         date: new Date().toLocaleString(),
         error: status === 'failed' ? 'Recharge Failed. Please try again later.' : null
       });
-      setStep(3); // Result Screen
       
       if (status === 'success') {
         toast.success('Recharge Successful!');
@@ -313,8 +315,6 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       }
     } catch (error: any) {
       console.error(error);
-      setProcessingStep(5);
-      await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Save failed transaction to database even if API throws an error
       try {
@@ -339,9 +339,9 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       }
 
       setResult({ status: 'failed', error: 'Recharge Failed. Please try again later.' });
-      setStep(3);
     } finally {
       setLoading(false);
+      setIsContinuing(false);
       setProcessingStep(0);
     }
   };
@@ -536,31 +536,37 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
           {step === 2 && (
             <motion.div
               key="step2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center p-6"
+              initial={{ y: "-100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-0 z-50 bg-white flex flex-col p-6 pt-24"
             >
-              <div className="w-full max-w-xs space-y-12">
-                <div className="space-y-8">
+              <div className="w-full max-w-sm mx-auto space-y-12">
+                <div className="text-center space-y-2 mb-8">
+                  <h3 className="text-2xl font-black text-slate-900">Processing Recharge</h3>
+                  <p className="text-slate-500 font-medium">Please do not close the app</p>
+                </div>
+
+                <div className="space-y-10">
                   {/* Step 1: Initiated */}
                   <motion.div 
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: processingStep >= 1 ? 1 : 0.3, x: processingStep >= 1 ? 0 : -20 }}
-                    className="flex items-center gap-4"
+                    className="flex items-center gap-5"
                   >
                     <div className={cn(
-                      "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                      "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
                       processingStep >= 1 ? "border-blue-600 bg-blue-50" : "border-slate-200"
                     )}>
                       {processingStep > 1 ? (
-                        <CheckCircle2 className="h-6 w-6 text-blue-600" />
+                        <CheckCircle2 className="h-7 w-7 text-blue-600" />
                       ) : (
-                        <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
+                        <Loader2 className="h-7 w-7 text-blue-600 animate-spin" />
                       )}
                     </div>
                     <span className={cn(
-                      "text-lg font-bold transition-all duration-500",
+                      "text-xl font-black transition-all duration-500",
                       processingStep >= 1 ? "text-slate-900" : "text-slate-300"
                     )}>Transaction Initiated</span>
                   </motion.div>
@@ -569,82 +575,94 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                   <motion.div 
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: processingStep >= 2 ? 1 : 0.3, x: processingStep >= 2 ? 0 : -20 }}
-                    className="flex items-center gap-4"
+                    className="flex items-center gap-5"
                   >
                     <div className={cn(
-                      "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                      "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
                       processingStep >= 2 ? "border-green-600 bg-green-50" : "border-slate-200"
                     )}>
                       {processingStep > 2 ? (
-                        <CheckCircle2 className="h-6 w-6 text-green-600" />
+                        <CheckCircle2 className="h-7 w-7 text-green-600" />
                       ) : processingStep === 2 ? (
-                        <Loader2 className="h-6 w-6 text-green-600 animate-spin" />
+                        <Loader2 className="h-7 w-7 text-green-600 animate-spin" />
                       ) : (
-                        <div className="h-2 w-2 rounded-full bg-slate-200" />
+                        <div className="h-3 w-3 rounded-full bg-slate-200" />
                       )}
                     </div>
                     <span className={cn(
-                      "text-lg font-bold transition-all duration-500",
+                      "text-xl font-black transition-all duration-500",
                       processingStep >= 2 ? "text-slate-900" : "text-slate-300"
-                    )}>Wallet Deducted Successfully</span>
+                    )}>Wallet Deducted</span>
                   </motion.div>
 
-                  {/* Step 3: Recharge Processing / Success / Failed */}
+                  {/* Step 3: Processing / Success / Failed */}
                   <motion.div 
                     initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: processingStep >= 3 ? 1 : 0.3, x: processingStep >= 3 ? 0 : -20 }}
-                    className="flex items-center gap-4"
+                    animate={{ opacity: processingStep >= 4 ? 1 : 0.3, x: processingStep >= 4 ? 0 : -20 }}
+                    className="flex items-center gap-5"
                   >
                     <div className={cn(
-                      "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                      processingStep === 4 ? "border-green-600 bg-green-50" : 
-                      processingStep === 5 ? "border-red-600 bg-red-50" :
-                      processingStep === 3 ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                      "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                      processingStep === 5 ? "border-green-600 bg-green-50" : 
+                      processingStep === 6 ? "border-red-600 bg-red-50" :
+                      processingStep === 4 ? "border-blue-600 bg-blue-50" : "border-slate-200"
                     )}>
-                      {processingStep === 4 ? (
-                        <CheckCircle2 className="h-6 w-6 text-green-600" />
-                      ) : processingStep === 5 ? (
-                        <XCircle className="h-6 w-6 text-red-600" />
-                      ) : processingStep === 3 ? (
-                        <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
+                      {processingStep === 5 ? (
+                        <CheckCircle2 className="h-7 w-7 text-green-600" />
+                      ) : processingStep === 6 ? (
+                        <XCircle className="h-7 w-7 text-red-600" />
+                      ) : processingStep === 4 ? (
+                        <Loader2 className="h-7 w-7 text-blue-600 animate-spin" />
                       ) : (
-                        <div className="h-2 w-2 rounded-full bg-slate-200" />
+                        <div className="h-3 w-3 rounded-full bg-slate-200" />
                       )}
                     </div>
                     <div className="flex flex-col">
                       <span className={cn(
-                        "text-lg font-bold transition-all duration-500",
-                        processingStep >= 3 ? "text-slate-900" : "text-slate-300"
+                        "text-xl font-black transition-all duration-500",
+                        processingStep >= 4 ? "text-slate-900" : "text-slate-300"
                       )}>
-                        {processingStep === 4 ? "Recharge Successful" : 
-                         processingStep === 5 ? "Recharge Failed" : 
+                        {processingStep === 5 ? "Recharge Successful" : 
+                         processingStep === 6 ? "Recharge Failed" : 
                          "Recharge Processing..."}
                       </span>
-                      {processingStep === 5 && (
-                        <motion.span 
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-xs text-red-500 font-medium"
-                        >
-                          Refund Initiated to Wallet
-                        </motion.span>
-                      )}
                     </div>
                   </motion.div>
                 </div>
 
-                <div className="pt-8">
-                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="pt-6">
+                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
                     <motion.div 
                       initial={{ width: "0%" }}
-                      animate={{ width: `${Math.min((processingStep / 4) * 100, 100)}%` }}
+                      animate={{ width: `${Math.min((processingStep / 5) * 100, 100)}%` }}
                       className={cn(
                         "h-full transition-all duration-500",
-                        processingStep === 5 ? "bg-red-500" : "bg-blue-600"
+                        processingStep === 6 ? "bg-red-500" : "bg-blue-600"
                       )}
                     />
                   </div>
                 </div>
+
+                <AnimatePresence>
+                  {processingStep === 3 && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="pt-12"
+                    >
+                      <Button 
+                        className="w-full h-16 bg-blue-700 hover:bg-blue-800 text-white text-2xl font-black rounded-3xl shadow-2xl flex items-center justify-center gap-4 border-4 border-blue-100/30"
+                        onClick={continueRecharge}
+                        disabled={isContinuing}
+                      >
+                        {isContinuing ? <Loader2 className="h-8 w-8 animate-spin" /> : <CheckCircle2 className="h-8 w-8" />}
+                        OK
+                      </Button>
+                      <p className="text-center text-slate-400 text-sm mt-6 font-bold uppercase tracking-widest">Tap OK to Complete</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.div>
           )}
@@ -652,116 +670,104 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
           {step === 3 && result && (
             <motion.div
               key="step3"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="flex flex-col items-center justify-center space-y-8 py-10"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center justify-center space-y-8 py-6"
             >
-              {result.status === 'success' ? (
-                <div className="flex flex-col items-center gap-6 text-center w-full">
-                  <div className="relative">
-                    <motion.div 
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", damping: 12 }}
-                      className="relative rounded-full bg-green-100 p-8 border-4 border-white shadow-xl"
-                    >
+              <div className="flex flex-col items-center gap-6 text-center w-full">
+                <div className="relative">
+                  <motion.div 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", damping: 12 }}
+                    className={cn(
+                      "relative rounded-full p-10 border-4 border-white shadow-2xl",
+                      result.status === 'success' || result.status === 'pending' ? "bg-green-100" : 
+                      result.status === 'processing' ? "bg-blue-50" : "bg-red-100"
+                    )}
+                  >
+                    {result.status === 'success' || result.status === 'pending' ? (
                       <CheckCircle2 className="h-24 w-24 text-green-600" />
-                    </motion.div>
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: [0, 1, 0] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="absolute inset-0 bg-green-200 rounded-full -z-10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-3xl font-black text-green-600">SUCCESSFUL!</h2>
-                    <p className="text-slate-500 font-medium">Your recharge has been processed</p>
-                  </div>
-                  
-                  <Card className="w-full max-w-sm border-2 border-dashed bg-white p-6 rounded-2xl shadow-sm">
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Amount Paid</span>
-                        <span className="font-black text-2xl text-blue-700">₹{result.amount}</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Status</span>
-                        <span className="font-bold text-green-600 uppercase">Success</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Date & Time</span>
-                        <span className="text-xs font-bold text-slate-600">{result.date}</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Mobile Number</span>
-                        <span className="font-bold text-slate-800">{result.mobile}</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Operator</span>
-                        <span className="font-bold text-slate-800">{formData.operator}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-sm">Transaction ID</span>
-                        <span className="font-mono text-xs font-bold text-slate-600">{result.txnId}</span>
-                      </div>
-                    </div>
-                  </Card>
+                    ) : result.status === 'processing' ? (
+                      <Loader2 className="h-24 w-24 text-blue-600 animate-spin" />
+                    ) : (
+                      <XCircle className="h-24 w-24 text-red-600" />
+                    )}
+                  </motion.div>
                 </div>
-              ) : result.status === 'pending' ? (
-                <div className="flex flex-col items-center gap-6 text-center w-full">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-yellow-200 rounded-full animate-ping opacity-25"></div>
-                    <div className="relative rounded-full bg-yellow-100 p-6 border-4 border-white shadow-xl">
-                      <Clock className="h-20 w-20 text-yellow-600 animate-pulse" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-3xl font-black text-yellow-600">PENDING...</h2>
-                    <p className="text-slate-500 font-medium">Waiting for operator confirmation</p>
-                  </div>
-                  
-                  <Card className="w-full max-w-sm border-2 border-dashed bg-white p-6 rounded-2xl shadow-sm">
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Mobile Number</span>
-                        <span className="font-bold text-slate-800">{result.mobile}</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Amount</span>
-                        <span className="font-black text-xl text-blue-700">₹{result.amount}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-sm">Transaction ID</span>
-                        <span className="font-mono text-xs font-bold text-slate-600">{result.txnId}</span>
-                      </div>
-                    </div>
-                  </Card>
-                  <p className="text-[10px] text-slate-400 max-w-[250px]">
-                    Status will update automatically once we receive confirmation from the operator.
+                <div className="space-y-2">
+                  <h2 className={cn(
+                    "text-4xl font-black tracking-tight",
+                    result.status === 'success' || result.status === 'pending' ? "text-green-600" : 
+                    result.status === 'processing' ? "text-blue-600" : "text-red-600"
+                  )}>
+                    {result.status === 'success' ? 'SUCCESSFUL!' : 
+                     result.status === 'pending' ? 'PENDING' : 
+                     result.status === 'processing' ? 'PROCESSING...' : 'FAILED!'}
+                  </h2>
+                  <p className="text-slate-500 font-bold text-lg">
+                    {result.status === 'success' ? 'Recharge Completed' : 
+                     result.status === 'pending' ? 'Processing with Operator' : 
+                     result.status === 'processing' ? 'Verifying with Operator' : 'Transaction Failed'}
                   </p>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-6 text-center">
-                  <div className="rounded-full bg-red-100 p-8 border-4 border-white shadow-xl">
-                    <XCircle className="h-24 w-24 text-red-600" />
+                
+                <Card className="w-full max-w-sm border-none bg-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-2 bg-blue-600" />
+                  <div className="text-center mb-6">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Transaction Receipt</p>
                   </div>
-                  <div className="space-y-2">
-                    <h2 className="text-3xl font-black text-red-600">FAILED!</h2>
-                    <p className="text-slate-500 font-medium">Recharge Failed</p>
-                    {result.error && <p className="text-sm text-red-400">{result.error}</p>}
+                  <div className="space-y-5">
+                    <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Amount</span>
+                      <span className="font-black text-3xl text-blue-700">₹{result.amount}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Mobile</span>
+                      <span className="font-black text-xl text-slate-800">{result.mobile}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Operator</span>
+                      <span className="font-black text-slate-800">{formData.operator}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Date</span>
+                      <span className="text-xs font-black text-slate-600">{result.date}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Txn ID</span>
+                      <span className="font-mono text-xs font-black text-slate-600">{result.txnId}</span>
+                    </div>
+                    {result.error && (
+                      <div className="mt-6 p-4 bg-red-50 rounded-2xl border border-red-100">
+                        <p className="text-[10px] text-red-600 font-black uppercase mb-1 tracking-wider">Failure Reason</p>
+                        <p className="text-xs text-red-500 font-bold">{result.error}</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                </Card>
+              </div>
               
-              <div className="flex w-full max-w-sm gap-4">
-                <Button variant="outline" className="flex-1 h-12 gap-2 rounded-xl border-2 font-bold" onClick={() => {
-                  const text = `Recharge of ₹${result.amount} for ${result.mobile} is successful. Txn ID: ${result.txnId}`;
-                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-                }}>
-                  <Share2 className="h-4 w-4" /> Share
+              <div className="flex w-full max-w-sm gap-4 px-4">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-16 gap-3 rounded-3xl border-4 font-black text-xl text-blue-700 border-blue-50 hover:bg-blue-50 shadow-lg" 
+                  disabled={result.status === 'processing'}
+                  onClick={() => {
+                    const statusText = result.status === 'success' ? 'Successful' : result.status === 'pending' ? 'Pending' : 'Failed';
+                    const text = `*Recharge Receipt*\n\n*Status:* ${statusText}\n*Mobile:* ${result.mobile}\n*Amount:* ₹${result.amount}\n*Operator:* ${formData.operator}\n*Txn ID:* ${result.txnId}\n*Date:* ${result.date}`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                  }}
+                >
+                  <Share2 className="h-6 w-6" /> Share
                 </Button>
-                <Button className="flex-1 h-12 bg-blue-700 hover:bg-blue-800 font-bold rounded-xl" onClick={reset}>Done</Button>
+                <Button 
+                  className="flex-1 h-16 bg-blue-700 hover:bg-blue-800 font-black text-2xl rounded-3xl shadow-2xl border-4 border-blue-600" 
+                  disabled={result.status === 'processing'}
+                  onClick={reset}
+                >
+                  Done
+                </Button>
               </div>
             </motion.div>
           )}
