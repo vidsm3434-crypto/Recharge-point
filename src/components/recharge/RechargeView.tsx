@@ -272,6 +272,29 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       }
     } catch (error: any) {
       console.error(error);
+      
+      // Save failed transaction to database even if API throws an error
+      try {
+        await supabase.from('transactions').insert([{
+          user_id: profile?.id,
+          type: 'recharge',
+          amount: parseFloat(formData.amount) || 0,
+          status: 'failed',
+          details: {
+            mobile: formData.mobile,
+            operator: formData.operator,
+            state: formData.state,
+            txnId: `FAIL${Date.now()}`,
+            error_message: error.message || 'API Error',
+            closing_balance: profile?.wallet_balance || 0
+          },
+          retailer_name: profile?.name,
+          retailer_mobile: profile?.mobile
+        }]);
+      } catch (dbError) {
+        console.error('Failed to save failed transaction:', dbError);
+      }
+
       setResult({ status: 'failed', error: error.message });
       setStep(3);
     } finally {

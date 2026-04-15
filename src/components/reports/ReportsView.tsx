@@ -57,24 +57,9 @@ export function ReportsView() {
         let query = supabase
           .from('transactions')
           .select('*')
+          .eq('user_id', profile.id)
           .order('timestamp', { ascending: false })
           .limit(200);
-
-        if (profile?.role === 'admin') {
-          // Admin sees everything
-        } else if (profile?.role === 'distributor') {
-          // Distributor sees their own AND their retailers' transactions
-          const { data: retailers } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('distributor_id', profile.id);
-          
-          const retailerIds = retailers?.map(r => r.id) || [];
-          query = query.in('user_id', [profile.id, ...retailerIds]);
-        } else {
-          // Retailer only sees their own
-          query = query.eq('user_id', profile?.id);
-        }
 
         const { data, error } = await query;
         if (error) throw error;
@@ -98,24 +83,7 @@ export function ReportsView() {
         const newTxn = payload.new;
         
         // Filter logic for real-time
-        if (profile.role === 'admin') {
-          setTransactions(prev => [newTxn, ...prev].slice(0, 200));
-        } else if (profile.role === 'distributor') {
-          // Check if it belongs to distributor or their retailers
-          if (newTxn.user_id === profile.id) {
-            setTransactions(prev => [newTxn, ...prev].slice(0, 200));
-          } else {
-            const { data } = await supabase
-              .from('profiles')
-              .select('distributor_id')
-              .eq('id', newTxn.user_id)
-              .maybeSingle();
-            
-            if (data?.distributor_id === profile.id) {
-              setTransactions(prev => [newTxn, ...prev].slice(0, 200));
-            }
-          }
-        } else if (newTxn.user_id === profile.id) {
+        if (newTxn.user_id === profile.id) {
           setTransactions(prev => [newTxn, ...prev].slice(0, 200));
         }
       })
