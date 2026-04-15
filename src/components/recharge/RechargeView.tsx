@@ -169,15 +169,34 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     setProcessingStep(2); // Step 2: Wallet Deducted
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setProcessingStep(3); // Step 3: Show OK Button
+    
+    // Start the API process automatically in the background
+    continueRecharge(false); 
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+    // Only show OK button if we haven't already moved to a later processing stage (4+)
+    setProcessingStep(prev => prev < 3 ? 3 : prev); 
   };
 
-  const continueRecharge = async () => {
+  const continueRecharge = async (manualClick: boolean = true) => {
+    if (isContinuing && manualClick) {
+      // If already running and user clicks OK, just switch the view
+      setStep(3);
+      return;
+    }
+    
     if (isContinuing) return;
     setIsContinuing(true);
     
-    // Move to result screen immediately in "Processing" state
+    // Set processing step to 4 to show the "Recharge Processing" spinner
+    setProcessingStep(4);
+
+    // If user clicked OK, move to result screen immediately
+    if (manualClick) {
+      setStep(3);
+    }
+
+    // Initialize processing result
     setResult({
       status: 'processing',
       mobile: formData.mobile,
@@ -185,7 +204,6 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       date: new Date().toLocaleString(),
       txnId: `RBH${Date.now()}`
     });
-    setStep(3);
     
     try {
       const amount = parseFloat(formData.amount);
@@ -342,7 +360,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
     } finally {
       setLoading(false);
       setIsContinuing(false);
-      setProcessingStep(0);
+      // Removed setProcessingStep(0) to prevent flickering before transition
+      setStep(3); // Always move to result screen when finished
     }
   };
 
@@ -350,6 +369,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
     setStep(1);
     setFormData({ mobile: '', operator: '', state: '', amount: '', mpin: '' });
     setResult(null);
+    setProcessingStep(0);
   };
 
   return (
@@ -644,7 +664,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 </div>
 
                 <AnimatePresence>
-                  {processingStep === 3 && (
+                  {(processingStep === 3 || processingStep === 4) && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -653,10 +673,9 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                     >
                       <Button 
                         className="w-full h-16 bg-blue-700 hover:bg-blue-800 text-white text-2xl font-black rounded-3xl shadow-2xl flex items-center justify-center gap-4 border-4 border-blue-100/30"
-                        onClick={continueRecharge}
-                        disabled={isContinuing}
+                        onClick={() => continueRecharge(true)}
                       >
-                        {isContinuing ? <Loader2 className="h-8 w-8 animate-spin" /> : <CheckCircle2 className="h-8 w-8" />}
+                        <CheckCircle2 className="h-8 w-8" />
                         OK
                       </Button>
                       <p className="text-center text-slate-400 text-sm mt-6 font-bold uppercase tracking-widest">Tap OK to Complete</p>
