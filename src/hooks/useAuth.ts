@@ -33,6 +33,9 @@ export function useAuth() {
       } else {
         setLoading(false);
       }
+    }).catch((error) => {
+      console.error("Error getting session:", error);
+      setLoading(false);
     });
 
     // Listen for changes on auth state (logged in, signed out, etc.)

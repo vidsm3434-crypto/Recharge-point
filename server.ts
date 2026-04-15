@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import axios from "axios";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
@@ -14,6 +15,19 @@ const __dirname = path.dirname(__filename);
 const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+// Configure Proxy for Axios if provided
+const proxyUrl = process.env.STATIC_PROXY_URL || process.env.FIXIE_URL || "http://uljorgxk:huk93w7n1k46@31.59.20.176:6754/";
+const httpsAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+const getAxiosConfig = (config: any = {}) => {
+  if (httpsAgent) {
+    config.httpsAgent = httpsAgent;
+    // Also set httpAgent in case the target URL is http://
+    config.httpAgent = httpsAgent; 
+    config.proxy = false;
+  }
+  return config;
+};
 
 // Use service role key for backend operations to bypass RLS
 const supabase = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
@@ -123,7 +137,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
       fullUrl = `${url}/recharge/balance?${new URLSearchParams(params as any).toString()}`;
       console.log(`Checking A1Topup balance: ${fullUrl}`);
 
-      const response = await axios.get(`${url}/recharge/balance`, { params });
+      const response = await axios.get(`${url}/recharge/balance`, getAxiosConfig({ params }));
       const apiData = response.data;
 
       if (typeof apiData === 'string' && apiData.includes("Parameter is missing")) {
@@ -243,7 +257,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
         response = { data: JSON.parse(rawResponse) };
       } else {
         try {
-          const axiosRes = await axios.get(`${url}/recharge/api`, { params, responseType: 'text' });
+          const axiosRes = await axios.get(`${url}/recharge/api`, getAxiosConfig({ params, responseType: 'text' }));
           rawResponse = axiosRes.data;
           
           if (!rawResponse) {
@@ -320,14 +334,14 @@ const OPERATOR_MAPPING: Record<string, string> = {
       const config = await getApiConfig();
       const { url = "https://business.a1topup.com", userId: apiUser, password: apiPassword } = config;
 
-      const response = await axios.get(`${url}/recharge/status`, {
+      const response = await axios.get(`${url}/recharge/status`, getAxiosConfig({
         params: {
           username: apiUser,
           pwd: apiPassword,
           orderid: txnId,
           format: "json"
         }
-      });
+      }));
 
       res.json(response.data);
     } catch (error: any) {
