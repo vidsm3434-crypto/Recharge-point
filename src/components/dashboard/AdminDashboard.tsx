@@ -128,14 +128,63 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
       }
 
       // Fetch Transactions
-      const { data: txnsData, error: txnsError } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('created_at', { ascending: false });
+      let txnsData: any[] | null = null;
+      let txnsError: any = null;
+
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)')
+          .order('created_at', { ascending: false });
+        
+        txnsData = data;
+        txnsError = error;
+
+        if (txnsError) {
+          console.warn('Join query failed, trying separate fetch:', txnsError);
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          if (fallbackError) throw fallbackError;
+          
+          if (fallbackData) {
+            const userIds = [...new Set(fallbackData.map(t => t.user_id))].filter(Boolean);
+            let profiles: any[] = [];
+            
+            if (userIds.length > 0) {
+              // Try to fetch with retailer_id first, fallback if it fails
+              const { data: pData, error: pError } = await supabase
+                .from('profiles')
+                .select('id, name, mobile, retailer_id, distributor_id')
+                .in('id', userIds);
+              
+              if (pError) {
+                console.warn('Profile fetch with retailer_id failed, trying basic fetch:', pError);
+                const { data: pDataBasic, error: pErrorBasic } = await supabase
+                  .from('profiles')
+                  .select('id, name, mobile')
+                  .in('id', userIds);
+                
+                if (!pErrorBasic) profiles = pDataBasic || [];
+              } else {
+                profiles = pData || [];
+              }
+            }
+
+            txnsData = fallbackData.map(t => ({
+              ...t,
+              profiles: profiles.find(p => p.id === t.user_id)
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Error in transaction fetch:', err);
+        txnsError = err;
+      }
       
-      if (txnsError) {
-        console.error('Error fetching transactions:', txnsError);
-      } else if (txnsData) {
+      if (txnsData) {
         setTransactions(txnsData);
         // Count pending wallet requests
         const pendingWallet = txnsData.filter(t => t.type === 'wallet_add' && t.status === 'pending').length;
@@ -321,11 +370,27 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
 
     setLoading(true);
     try {
+      // Generate Unique Retailer ID
+      let retailer_id = 'MB1001';
+      const { data: lastUser } = await supabase
+        .from('profiles')
+        .select('retailer_id')
+        .not('retailer_id', 'is', null)
+        .order('retailer_id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastUser && lastUser.retailer_id) {
+        const lastNum = parseInt(lastUser.retailer_id.replace('MB', ''));
+        retailer_id = `MB${lastNum + 1}`;
+      }
+
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newUser,
+          retailer_id: newUser.role === 'retailer' ? retailer_id : null,
           created_by: 'Admin'
         })
       });

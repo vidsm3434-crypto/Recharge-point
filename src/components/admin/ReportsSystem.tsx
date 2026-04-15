@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { supabase } from '../../lib/supabase';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -17,10 +18,11 @@ import {
   Download,
   Filter,
   CalendarDays,
-  RefreshCw
+  RefreshCw,
+  XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '../../lib/utils';
+import { cn, exportToCSV } from '../../lib/utils';
 import { TransactionDetailModal } from '../reports/TransactionDetailModal';
 
 interface ReportsSystemProps {
@@ -43,6 +45,42 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [resolveTxn, setResolveTxn] = useState<any>(null);
+  const [resolveData, setResolveData] = useState({ status: 'Resolved', result: 'Success', remark: '' });
+
+  const handleResolve = (txn: any) => {
+    setResolveTxn(txn);
+    setResolveData({ status: 'Resolved', result: 'Success', remark: '' });
+    setResolveModalOpen(true);
+  };
+
+  const submitResolve = async () => {
+    if (!resolveTxn) return;
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          details: {
+            ...resolveTxn.details,
+            complaintStatus: resolveData.status,
+            complaintResult: resolveData.result,
+            complaintRemark: resolveData.remark,
+            complaintResolvedDate: new Date().toISOString()
+          }
+        })
+        .eq('id', resolveTxn.id);
+
+      if (error) throw error;
+      toast.success('Complaint resolved successfully');
+      setResolveModalOpen(false);
+      // We don't have a local setTransactions here, so we rely on the parent component's real-time updates or a refresh.
+      // Ideally, we'd trigger a refresh. For now, we just close the modal.
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to resolve complaint');
+    }
+  };
 
   const reportOptions = [
     { id: 'transactions', label: 'Transactions History', icon: <ClipboardList className="text-blue-600" /> },
@@ -66,7 +104,7 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
         data = data.filter(t => t.type === 'wallet_add');
         break;
       case 'commission':
-        data = data.filter(t => t.details?.commission);
+        data = data.filter(t => t.type === 'commission');
         break;
       case 'online_deposit':
         data = data.filter(t => t.type === 'wallet_add' && t.details?.gateway);
@@ -103,6 +141,62 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
 
     return data;
   }, [transactions, view, searchQuery, dateRange]);
+
+  const handleExport = () => {
+    if (filteredData.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const exportData = filteredData.map(t => {
+      const base = {
+        Date: new Date(t.created_at || t.timestamp).toLocaleString(),
+        'Retailer Name': t.retailer_name || 'N/A',
+        'Retailer Mobile': t.retailer_mobile || 'N/A',
+        Amount: t.amount,
+        Status: t.status?.toUpperCase(),
+        Type: t.type,
+      };
+
+      if (view === 'transactions') {
+        return {
+          ...base,
+          Mobile: t.details?.mobile || 'N/A',
+          Operator: t.details?.operator || 'N/A',
+          State: t.details?.state || 'N/A',
+          'Transaction ID': t.details?.txnId || t.id,
+          'Operator ID': t.details?.opid || 'N/A',
+          Message: t.details?.error_message || t.details?.api_response?.message || 'N/A',
+        };
+      } else if (view === 'wallet' || view === 'online_deposit' || view === 'manual_deposit') {
+        return {
+          ...base,
+          Method: t.details?.method || 'N/A',
+          Gateway: t.details?.gateway || 'N/A',
+          'Ref Number': t.details?.refNumber || t.details?.razorpay_payment_id || 'N/A',
+          Note: t.details?.note || 'N/A',
+          'Closing Balance': t.details?.closing_balance || 'N/A',
+        };
+      } else if (view === 'complaints') {
+        return {
+          ...base,
+          'Complaint Date': t.details?.complaintDate ? new Date(t.details.complaintDate).toLocaleString() : 'N/A',
+          'Complaint Status': t.details?.complaintStatus || 'Pending',
+          'Complaint Remark': t.details?.complaintRemark || 'N/A',
+        };
+      } else if (view === 'commission') {
+        return {
+          ...base,
+          'Commission Amount': t.details?.commission_amount || 0,
+        };
+      }
+
+      return base;
+    });
+
+    exportToCSV(exportData, `${view}_report_${new Date().toISOString().split('T')[0]}`);
+    toast.success('Exported successfully');
+  };
 
   const getOperatorLogo = (operator: string) => {
     const op = operator?.toLowerCase() || '';
@@ -167,7 +261,7 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
             <Filter className="absolute right-4 top-3.5 h-5 w-5 text-slate-400" />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 gap-2 h-12 border-slate-200" onClick={() => toast.info('Exporting...')}>
+            <Button variant="outline" className="flex-1 gap-2 h-12 border-slate-200" onClick={handleExport}>
               <Download className="h-4 w-4" /> Export
             </Button>
           </div>
@@ -202,7 +296,34 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
         </Card>
 
         <div className="space-y-4">
-          {filteredData.length > 0 ? (
+          {view === 'datewise' ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="border-none shadow-sm bg-blue-50">
+                <CardContent className="p-4">
+                  <p className="text-xs text-slate-500 font-medium">Total Transactions</p>
+                  <p className="text-2xl font-bold text-blue-700">{filteredData.length}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-none shadow-sm bg-indigo-50">
+                <CardContent className="p-4">
+                  <p className="text-xs text-slate-500 font-medium">Total Amount</p>
+                  <p className="text-2xl font-bold text-indigo-700">₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-none shadow-sm bg-green-50">
+                <CardContent className="p-4">
+                  <p className="text-xs text-slate-500 font-medium">Success Count</p>
+                  <p className="text-2xl font-bold text-green-700">{filteredData.filter(t => t.status === 'success').length}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-none shadow-sm bg-red-50">
+                <CardContent className="p-4">
+                  <p className="text-xs text-slate-500 font-medium">Failed Count</p>
+                  <p className="text-2xl font-bold text-red-700">{filteredData.filter(t => t.status === 'failed').length}</p>
+                </CardContent>
+              </Card>
+            </div>
+          ) : filteredData.length > 0 ? (
             filteredData.map((txn, i) => (
               <Card 
                 key={i} 
@@ -241,14 +362,29 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
                       <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || 'N/A'}</p>
                       <p className="text-[10px] text-slate-400 italic">User: {txn.retailer_name || 'System'}</p>
                     </div>
-                    <div className="self-end">
+                    <div className="self-end text-right">
                       <div className={cn(
-                        "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider",
+                        "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider mb-2 inline-block",
                         txn.status === 'success' ? "border-green-500 text-green-600 bg-white" : 
                         txn.status === 'failed' ? "border-red-500 text-red-600 bg-white" : "border-amber-500 text-amber-600 bg-white"
                       )}>
                         {txn.status}
                       </div>
+                      {view === 'complaints' && (
+                        <div>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-7 text-[10px] px-3 border-purple-200 text-purple-600 rounded-md hover:bg-purple-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResolve(txn);
+                            }}
+                          >
+                            {txn.details?.complaintStatus === 'Resolved' ? 'View Resolution' : 'Resolve'}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -285,6 +421,68 @@ export function ReportsSystem({ transactions }: ReportsSystemProps) {
         onClose={() => setShowDetailModal(false)}
         getOperatorLogo={getOperatorLogo}
       />
+
+      {/* Resolve Complaint Modal */}
+      {resolveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-xl">
+            <div className="bg-purple-600 p-4 text-white flex justify-between items-center">
+              <h3 className="font-bold">Resolve Complaint</h3>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => setResolveModalOpen(false)}>
+                <XCircle className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500">Transaction ID</p>
+                <p className="font-bold text-sm">{resolveTxn?.details?.txnId || resolveTxn?.id}</p>
+                <p className="text-xs text-slate-500 mt-2">Complaint Type</p>
+                <p className="font-bold text-sm">{resolveTxn?.details?.complaintType || 'N/A'}</p>
+                <p className="text-xs text-slate-500 mt-2">Description</p>
+                <p className="text-sm">{resolveTxn?.details?.complaintDesc || 'N/A'}</p>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status</label>
+                <select 
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={resolveData.status}
+                  onChange={(e) => setResolveData({...resolveData, status: e.target.value})}
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Resolved">Resolved</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Final Result</label>
+                <select 
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={resolveData.result}
+                  onChange={(e) => setResolveData({...resolveData, result: e.target.value})}
+                >
+                  <option value="Success">Success</option>
+                  <option value="Failed">Failed</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Remark</label>
+                <textarea 
+                  className="w-full p-3 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px]"
+                  placeholder="Resolution remark..."
+                  value={resolveData.remark}
+                  onChange={(e) => setResolveData({...resolveData, remark: e.target.value})}
+                />
+              </div>
+
+              <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white" onClick={submitResolve}>
+                Update Complaint
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

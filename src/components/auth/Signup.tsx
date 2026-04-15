@@ -72,6 +72,21 @@ export function Signup({ onBack, onSwitchToLogin }: SignupProps) {
         return;
       }
 
+      // 1.5 Generate Unique Retailer ID
+      let retailer_id = 'MB1001';
+      const { data: lastUser } = await supabase
+        .from('profiles')
+        .select('retailer_id')
+        .not('retailer_id', 'is', null)
+        .order('retailer_id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastUser && lastUser.retailer_id) {
+        const lastNum = parseInt(lastUser.retailer_id.replace('MB', ''));
+        retailer_id = `MB${lastNum + 1}`;
+      }
+
       // 2. Sign up user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -116,6 +131,7 @@ export function Signup({ onBack, onSwitchToLogin }: SignupProps) {
             email,
             dob,
             role,
+            retailer_id,
             created_by: 'Self',
             wallet_balance: 0,
             kyc_status: 'pending',

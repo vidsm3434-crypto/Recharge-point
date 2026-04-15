@@ -20,9 +20,11 @@ export function TransactionManagement({ transactions, users }: TransactionManage
   const [showDetailModal, setShowDetailModal] = useState(false);
 
   const filteredTransactions = transactions.filter(t => {
+    const user = t.profiles || t.user_profile;
     const matchesSearch = t.details?.mobile?.includes(searchTerm) || 
                          t.details?.txnId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         t.retailer_name?.toLowerCase().includes(searchTerm.toLowerCase());
+                         user?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         user?.retailer_id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -115,7 +117,11 @@ export function TransactionManagement({ transactions, users }: TransactionManage
                     <div className="flex-1">
                       <p className="font-bold text-slate-900 text-base">{txn.details?.operator || (txn.type === 'wallet_add' ? 'Wallet Load' : 'Transaction')}</p>
                       <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || 'N/A'}</p>
-                      <p className="text-[10px] text-slate-400 italic">User: {txn.retailer_name || user?.name} {distributor ? `(via ${distributor.name})` : ''}</p>
+                      <div className="mt-1 text-[10px] leading-tight">
+                        <p className="text-primary font-bold">{txn.profiles?.retailer_id || 'N/A'}</p>
+                        <p className="text-slate-600 font-bold">{txn.profiles?.name || 'N/A'}</p>
+                        <p className="text-slate-400">({txn.profiles?.mobile || 'N/A'})</p>
+                      </div>
                     </div>
                     <div className="self-end">
                       <div className={cn(

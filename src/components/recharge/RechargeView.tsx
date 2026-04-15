@@ -14,7 +14,8 @@ import {
   ArrowLeft, 
   Contact2, 
   ChevronDown,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -50,8 +51,25 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
   const [showOperatorList, setShowOperatorList] = useState(false);
   const [showCircleList, setShowCircleList] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [processingStep, setProcessingStep] = useState(0);
   const [plans, setPlans] = useState<any[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
+
+  // Auto-detect operator
+  React.useEffect(() => {
+    if (formData.mobile.length >= 4) {
+      const prefix = formData.mobile.substring(0, 3);
+      // Basic detection logic (can be expanded)
+      if (['600', '700', '800', '900'].includes(prefix)) {
+        if (!formData.operator) setFormData(prev => ({ ...prev, operator: 'Jio' }));
+      } else if (['984', '994', '974', '964', '954', '944', '914', '814', '804', '704'].includes(prefix)) {
+        if (!formData.operator) setFormData(prev => ({ ...prev, operator: 'Airtel' }));
+      } else if (['989', '999', '979', '969', '959', '949', '919', '819', '809', '709'].includes(prefix)) {
+        if (!formData.operator) setFormData(prev => ({ ...prev, operator: 'Vi' }));
+      }
+    }
+  }, [formData.mobile]);
 
   // Real-time status listener
   React.useEffect(() => {
@@ -129,7 +147,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         toast.error('Insufficient wallet balance');
         return;
       }
-      setStep(2);
+      setShowConfirmModal(true);
     }
   };
 
@@ -144,11 +162,24 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       return;
     }
 
-    setLoading(true);
+    setShowConfirmModal(false);
+    setStep(2); // Move to Processing Screen
+    setProcessingStep(1); // Step 1: Transaction Initiated
+    
     try {
       const amount = parseFloat(formData.amount);
       
-      // 1. Call our backend API to process the recharge
+      // Step 1: Initiated
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Step 2: Wallet Deducted
+      setProcessingStep(2);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Step 3: Recharge Processing (API Call)
+      setProcessingStep(3);
+      
+      // Call our backend API to process the recharge
       const apiResponse = await fetch('/api/recharge/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,6 +205,14 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         }
       }
 
+      if (status === 'success' || status === 'pending') {
+        setProcessingStep(4); // Step 3: Success
+      } else {
+        setProcessingStep(5); // Step 3: Failed
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       const transactionId = apiData.txnId || apiData.txid || `RBH${Date.now()}`;
 
       // 2. Save transaction to database
@@ -190,6 +229,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               operator: formData.operator,
               state: formData.state,
               txnId: transactionId,
+              opid: apiData.apiTxId || apiData.txid || apiData.opid,
+              error_message: status === 'failed' ? (apiData.message || apiData.msg || apiData.ERROR) : null,
               api_response: apiData,
               closing_balance: status === 'success' ? (profile?.wallet_balance || 0) - amount : profile?.wallet_balance || 0
             },
@@ -255,23 +296,25 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         id: txnData.id,
         status: status,
         txnId: transactionId,
-        apiTxId: apiData.apiTxId || apiData.txid,
+        apiTxId: apiData.apiTxId || apiData.txid || apiData.opid,
         mobile: formData.mobile,
         amount: amount,
         date: new Date().toLocaleString(),
-        error: status === 'failed' ? (apiData.message || 'API rejected the request') : null
+        error: status === 'failed' ? 'Recharge Failed. Please try again later.' : null
       });
-      setStep(3);
+      setStep(3); // Result Screen
       
       if (status === 'success') {
         toast.success('Recharge Successful!');
       } else if (status === 'pending') {
         toast.info('Recharge is Pending');
       } else {
-        toast.error('Recharge Failed: ' + (apiData.message || 'Unknown error'));
+        toast.error('Recharge Failed. Please try again later.');
       }
     } catch (error: any) {
       console.error(error);
+      setProcessingStep(5);
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Save failed transaction to database even if API throws an error
       try {
@@ -295,10 +338,11 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         console.error('Failed to save failed transaction:', dbError);
       }
 
-      setResult({ status: 'failed', error: error.message });
+      setResult({ status: 'failed', error: 'Recharge Failed. Please try again later.' });
       setStep(3);
     } finally {
       setLoading(false);
+      setProcessingStep(0);
     }
   };
 
@@ -327,7 +371,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
           <ArrowLeft className="h-6 w-6" />
         </Button>
         <h2 className="text-lg font-medium">
-          {step === 1 ? 'Prepaid Recharge' : step === 2 ? 'Confirm Payment' : 'Status'}
+          {step === 1 ? 'Prepaid Recharge' : step === 2 ? 'Processing' : 'Status'}
         </h2>
       </div>
 
@@ -485,58 +529,123 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 >
                   Proceed to Pay
                 </Button>
-              </div>
+              </div >
             </motion.div>
           )}
 
           {step === 2 && (
             <motion.div
               key="step2"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center p-6"
             >
-              <Card className="border shadow-sm rounded-2xl overflow-hidden">
-                <div className="bg-blue-50 p-6 text-center border-b">
-                  <p className="text-sm text-slate-500 font-medium uppercase tracking-wider">Recharge Amount</p>
-                  <h2 className="text-4xl font-black text-blue-700 mt-1">₹{formData.amount}</h2>
-                  <div className="mt-4 inline-flex items-center gap-2 bg-white px-4 py-1.5 rounded-full shadow-sm border">
-                    {operators.find(op => op.name === formData.operator)?.logo && (
-                      <img 
-                        src={operators.find(op => op.name === formData.operator)?.logo} 
-                        alt="" 
-                        className="h-4 w-4 object-contain"
-                        referrerPolicy="no-referrer"
-                      />
-                    )}
-                    <span className="text-sm font-bold text-slate-700">{formData.mobile}</span>
-                    <span className="text-slate-300">|</span>
-                    <span className="text-sm font-medium text-slate-500">{formData.operator}</span>
-                  </div>
+              <div className="w-full max-w-xs space-y-12">
+                <div className="space-y-8">
+                  {/* Step 1: Initiated */}
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: processingStep >= 1 ? 1 : 0.3, x: processingStep >= 1 ? 0 : -20 }}
+                    className="flex items-center gap-4"
+                  >
+                    <div className={cn(
+                      "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                      processingStep >= 1 ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                    )}>
+                      {processingStep > 1 ? (
+                        <CheckCircle2 className="h-6 w-6 text-blue-600" />
+                      ) : (
+                        <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
+                      )}
+                    </div>
+                    <span className={cn(
+                      "text-lg font-bold transition-all duration-500",
+                      processingStep >= 1 ? "text-slate-900" : "text-slate-300"
+                    )}>Transaction Initiated</span>
+                  </motion.div>
+
+                  {/* Step 2: Wallet Deducted */}
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: processingStep >= 2 ? 1 : 0.3, x: processingStep >= 2 ? 0 : -20 }}
+                    className="flex items-center gap-4"
+                  >
+                    <div className={cn(
+                      "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                      processingStep >= 2 ? "border-green-600 bg-green-50" : "border-slate-200"
+                    )}>
+                      {processingStep > 2 ? (
+                        <CheckCircle2 className="h-6 w-6 text-green-600" />
+                      ) : processingStep === 2 ? (
+                        <Loader2 className="h-6 w-6 text-green-600 animate-spin" />
+                      ) : (
+                        <div className="h-2 w-2 rounded-full bg-slate-200" />
+                      )}
+                    </div>
+                    <span className={cn(
+                      "text-lg font-bold transition-all duration-500",
+                      processingStep >= 2 ? "text-slate-900" : "text-slate-300"
+                    )}>Wallet Deducted Successfully</span>
+                  </motion.div>
+
+                  {/* Step 3: Recharge Processing / Success / Failed */}
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: processingStep >= 3 ? 1 : 0.3, x: processingStep >= 3 ? 0 : -20 }}
+                    className="flex items-center gap-4"
+                  >
+                    <div className={cn(
+                      "h-10 w-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                      processingStep === 4 ? "border-green-600 bg-green-50" : 
+                      processingStep === 5 ? "border-red-600 bg-red-50" :
+                      processingStep === 3 ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                    )}>
+                      {processingStep === 4 ? (
+                        <CheckCircle2 className="h-6 w-6 text-green-600" />
+                      ) : processingStep === 5 ? (
+                        <XCircle className="h-6 w-6 text-red-600" />
+                      ) : processingStep === 3 ? (
+                        <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
+                      ) : (
+                        <div className="h-2 w-2 rounded-full bg-slate-200" />
+                      )}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className={cn(
+                        "text-lg font-bold transition-all duration-500",
+                        processingStep >= 3 ? "text-slate-900" : "text-slate-300"
+                      )}>
+                        {processingStep === 4 ? "Recharge Successful" : 
+                         processingStep === 5 ? "Recharge Failed" : 
+                         "Recharge Processing..."}
+                      </span>
+                      {processingStep === 5 && (
+                        <motion.span 
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-xs text-red-500 font-medium"
+                        >
+                          Refund Initiated to Wallet
+                        </motion.span>
+                      )}
+                    </div>
+                  </motion.div>
                 </div>
-                <CardContent className="p-6 space-y-6">
-                  <div className="space-y-3">
-                    <label className="text-sm font-bold text-slate-600 ml-1">Enter 4-digit MPIN</label>
-                    <Input 
-                      type="password" 
-                      placeholder="● ● ● ●" 
-                      className="text-center text-3xl h-16 tracking-[0.5em] font-bold border-2 focus:border-blue-700 rounded-xl" 
-                      maxLength={4}
-                      value={formData.mpin}
-                      onChange={(e) => setFormData({...formData, mpin: e.target.value})}
-                      inputMode="numeric"
+
+                <div className="pt-8">
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: "0%" }}
+                      animate={{ width: `${Math.min((processingStep / 4) * 100, 100)}%` }}
+                      className={cn(
+                        "h-full transition-all duration-500",
+                        processingStep === 5 ? "bg-red-500" : "bg-blue-600"
+                      )}
                     />
                   </div>
-                  <Button 
-                    className="w-full bg-blue-700 hover:bg-blue-800 text-white h-14 text-lg font-bold rounded-xl shadow-lg" 
-                    onClick={handleRecharge} 
-                    disabled={loading}
-                  >
-                    {loading ? 'Processing...' : 'Confirm Payment'}
-                  </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </motion.div>
           )}
 
@@ -550,10 +659,20 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               {result.status === 'success' ? (
                 <div className="flex flex-col items-center gap-6 text-center w-full">
                   <div className="relative">
-                    <div className="absolute inset-0 bg-green-200 rounded-full animate-ping opacity-25"></div>
-                    <div className="relative rounded-full bg-green-100 p-6 border-4 border-white shadow-xl">
-                      <CheckCircle2 className="h-20 w-20 text-green-600" />
-                    </div>
+                    <motion.div 
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", damping: 12 }}
+                      className="relative rounded-full bg-green-100 p-8 border-4 border-white shadow-xl"
+                    >
+                      <CheckCircle2 className="h-24 w-24 text-green-600" />
+                    </motion.div>
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: [0, 1, 0] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="absolute inset-0 bg-green-200 rounded-full -z-10"
+                    />
                   </div>
                   <div className="space-y-2">
                     <h2 className="text-3xl font-black text-green-600">SUCCESSFUL!</h2>
@@ -563,20 +682,28 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                   <Card className="w-full max-w-sm border-2 border-dashed bg-white p-6 rounded-2xl shadow-sm">
                     <div className="space-y-4">
                       <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                        <span className="text-slate-500 text-sm">Amount Paid</span>
+                        <span className="font-black text-2xl text-blue-700">₹{result.amount}</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                        <span className="text-slate-500 text-sm">Status</span>
+                        <span className="font-bold text-green-600 uppercase">Success</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                        <span className="text-slate-500 text-sm">Date & Time</span>
+                        <span className="text-xs font-bold text-slate-600">{result.date}</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                         <span className="text-slate-500 text-sm">Mobile Number</span>
                         <span className="font-bold text-slate-800">{result.mobile}</span>
                       </div>
                       <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Amount Paid</span>
-                        <span className="font-black text-xl text-blue-700">₹{result.amount}</span>
-                      </div>
-                      <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                        <span className="text-slate-500 text-sm">Transaction ID</span>
-                        <span className="font-mono text-xs font-bold text-slate-600">{result.txnId}</span>
+                        <span className="text-slate-500 text-sm">Operator</span>
+                        <span className="font-bold text-slate-800">{formData.operator}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-sm">Date & Time</span>
-                        <span className="text-xs font-bold text-slate-600">{result.date}</span>
+                        <span className="text-slate-500 text-sm">Transaction ID</span>
+                        <span className="font-mono text-xs font-bold text-slate-600">{result.txnId}</span>
                       </div>
                     </div>
                   </Card>
@@ -616,12 +743,13 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-6 text-center">
-                  <div className="rounded-full bg-red-100 p-6 border-4 border-white shadow-xl">
-                    <XCircle className="h-20 w-20 text-red-600" />
+                  <div className="rounded-full bg-red-100 p-8 border-4 border-white shadow-xl">
+                    <XCircle className="h-24 w-24 text-red-600" />
                   </div>
                   <div className="space-y-2">
                     <h2 className="text-3xl font-black text-red-600">FAILED!</h2>
-                    <p className="text-slate-500 font-medium">{result.error || 'Something went wrong'}</p>
+                    <p className="text-slate-500 font-medium">Recharge Failed</p>
+                    {result.error && <p className="text-sm text-red-400">{result.error}</p>}
                   </div>
                 </div>
               )}
@@ -639,6 +767,68 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Confirmation Modal */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col"
+          >
+            <div className="bg-blue-700 p-8 text-white text-center space-y-2">
+              <p className="text-blue-200 text-sm font-medium uppercase tracking-widest">Confirm Recharge</p>
+              <h3 className="text-3xl font-black">{formData.mobile}</h3>
+              <div className="text-4xl font-black mt-4 bg-white/10 py-3 rounded-2xl border border-white/20">
+                ₹{formData.amount}
+              </div>
+            </div>
+
+            <div className="p-8 space-y-8 bg-white">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Operator</p>
+                  <p className="font-bold text-slate-800">{formData.operator}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Circle</p>
+                  <p className="font-bold text-slate-800">{formData.state}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Enter 4-digit MPIN</label>
+                <Input 
+                  type="password" 
+                  placeholder="● ● ● ●" 
+                  className="text-center text-4xl h-20 tracking-[0.5em] font-black border-2 border-slate-100 focus:border-blue-700 rounded-2xl bg-slate-50" 
+                  maxLength={4}
+                  value={formData.mpin}
+                  onChange={(e) => setFormData({...formData, mpin: e.target.value})}
+                  inputMode="numeric"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-14 rounded-2xl font-bold border-2 text-slate-600"
+                  onClick={() => setShowConfirmModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  className="flex-1 h-14 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-2xl shadow-lg shadow-blue-200"
+                  onClick={handleRecharge}
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </DialogContent>
+      </Dialog>
       {/* Plans Dialog */}
       <Dialog open={showPlans} onOpenChange={setShowPlans}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden h-[80vh] flex flex-col">

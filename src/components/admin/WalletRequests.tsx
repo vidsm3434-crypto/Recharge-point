@@ -28,7 +28,7 @@ export function WalletRequests() {
         .from('transactions')
         .select(`
           *,
-          profiles:user_id (name, mobile)
+          profiles:user_id (name, mobile, retailer_id)
         `)
         .eq('type', 'wallet_add')
         .eq('status', 'pending')
@@ -58,7 +58,7 @@ export function WalletRequests() {
         if (userIds.length > 0) {
           const { data: profilesData, error: profilesError } = await supabase
             .from('profiles')
-            .select('id, name, mobile')
+            .select('id, name, mobile, retailer_id')
             .in('id', userIds);
           
           if (profilesError) throw profilesError;
@@ -253,13 +253,15 @@ export function WalletRequests() {
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                           <User size={20} />
                         </div>
-                        <div>
+                        <div className="flex flex-col">
+                          <p className="text-primary font-bold text-[10px] uppercase tracking-wider">
+                            {Array.isArray(req.profiles) ? req.profiles[0]?.retailer_id : req.profiles?.retailer_id || 'N/A'}
+                          </p>
                           <p className="font-bold text-sm">
                             {Array.isArray(req.profiles) ? req.profiles[0]?.name : req.profiles?.name || 'Unknown User'}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-mono">ID: {req.id.slice(0, 8)}...</p>
                           <p className="text-xs text-slate-500">
-                            {Array.isArray(req.profiles) ? req.profiles[0]?.mobile : req.profiles?.mobile || 'N/A'}
+                            ({Array.isArray(req.profiles) ? req.profiles[0]?.mobile : req.profiles?.mobile || 'N/A'})
                           </p>
                         </div>
                       </div>

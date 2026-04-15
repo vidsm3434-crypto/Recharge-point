@@ -36,7 +36,14 @@ const UserCard = ({ user, distributors, onUpdateWallet, onUpdateUser, onDeleteUs
               {user.name?.charAt(0)}
             </div>
             <div>
-              <p className="text-sm font-bold">{user.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold">{user.name}</p>
+                {user.retailer_id && (
+                  <Badge variant="outline" className="text-[9px] h-4 bg-primary/10 text-primary border-primary/20 font-bold">
+                    {user.retailer_id}
+                  </Badge>
+                )}
+              </div>
               <p className="text-[10px] text-slate-500">{user.mobile} • {user.email}</p>
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant="outline" className="text-[8px] h-4 bg-slate-50 text-slate-500 border-slate-200">
@@ -102,7 +109,8 @@ export function UserManagement({ users, onUpdateUser, onDeleteUser, onUpdateWall
 
   const filterUsers = (list: any[]) => list.filter(u => 
     u.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.mobile?.includes(searchQuery)
+    u.mobile?.includes(searchQuery) ||
+    u.retailer_id?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -164,7 +172,10 @@ export function UserManagement({ users, onUpdateUser, onDeleteUser, onUpdateWall
                   <p className="text-[10px] font-bold text-slate-400 uppercase">Linked Retailers</p>
                   {users.filter(ret => ret.distributor_id === u.id).map(ret => (
                     <div key={ret.id} className="flex items-center justify-between bg-white p-2 rounded-lg text-[10px] shadow-sm">
-                      <span>{ret.name} ({ret.mobile})</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-primary">{ret.retailer_id || 'N/A'}</span>
+                        <span>{ret.name} ({ret.mobile})</span>
+                      </div>
                       <span className="font-bold">₹{ret.wallet_balance?.toFixed(0)}</span>
                     </div>
                   ))}

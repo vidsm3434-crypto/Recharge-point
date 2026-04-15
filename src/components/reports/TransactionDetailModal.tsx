@@ -11,10 +11,12 @@ import {
   Calendar,
   Hash,
   Info,
-  ArrowLeft
+  ArrowLeft,
+  User
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { toast } from 'sonner';
+import { useAuthContext } from '../../hooks/AuthContext';
 
 interface TransactionDetailModalProps {
   transaction: any;
@@ -24,7 +26,21 @@ interface TransactionDetailModalProps {
 }
 
 export function TransactionDetailModal({ transaction, open, onClose, getOperatorLogo }: TransactionDetailModalProps) {
+  const { profile: currentUserProfile } = useAuthContext();
   if (!transaction) return null;
+
+  // Retailer Visibility Rule
+  // 1. Retailer Panel: Do NOT show "Retailer Name" field
+  // 2. Distributor Panel: Show retailer details ONLY if the retailer is linked to that distributor
+  // 3. Admin Panel: Admin can see all retailer details
+  
+  const retailerProfile = transaction.profiles || transaction.user_profile;
+  const isRetailer = currentUserProfile?.role === 'retailer';
+  const isAdmin = currentUserProfile?.role === 'admin';
+  const isDistributor = currentUserProfile?.role === 'distributor';
+  
+  const isLinkedRetailer = isDistributor && retailerProfile?.distributor_id === currentUserProfile?.id;
+  const showRetailerInfo = isAdmin || isLinkedRetailer;
 
   const handleShare = async () => {
     const text = `
@@ -37,6 +53,9 @@ Status: ${transaction.status.toUpperCase()}
 Order ID: ${transaction.details?.txnId || transaction.id}
 Date: ${new Date(transaction.timestamp).toLocaleString()}
 Ref ID: ${transaction.details?.opid || 'N/A'}
+State: ${transaction.details?.state || 'N/A'}
+${showRetailerInfo ? `Retailer: ${retailerProfile?.retailer_id || 'N/A'}\n${retailerProfile?.name || 'N/A'}\n(${retailerProfile?.mobile || 'N/A'})` : ''}
+Message: ${transaction.details?.error_message || transaction.details?.api_response?.message || 'N/A'}
 ----------------
 Generated via RechargePoint
     `.trim();
@@ -145,6 +164,35 @@ Generated via RechargePoint
                 value={transaction.details?.opid || 'N/A'} 
                 onCopy={transaction.details?.opid ? () => handleCopyId(transaction.details.opid) : undefined}
               />
+              <DetailRow 
+                icon={<Info className="h-4 w-4" />} 
+                label="State (Circle)" 
+                value={transaction.details?.state || 'N/A'} 
+              />
+              
+              {showRetailerInfo && retailerProfile && (
+                <div className="flex items-start gap-3 py-1">
+                  <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Retailer Identity</p>
+                    <div className="text-xs font-bold text-slate-700 leading-tight mt-0.5">
+                      <p className="text-primary">{retailerProfile.retailer_id || 'N/A'}</p>
+                      <p>{retailerProfile.name || 'N/A'}</p>
+                      <p className="text-slate-500 font-medium">({retailerProfile.mobile || 'N/A'})</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(transaction.details?.error_message || transaction.details?.api_response?.message) ? (
+                <DetailRow 
+                  icon={<Info className="h-4 w-4" />} 
+                  label="Message" 
+                  value={isRetailer ? 'Recharge Failed. Please try again later.' : (transaction.details?.error_message || transaction.details?.api_response?.message)} 
+                />
+              ) : null}
               {transaction.status === 'failed' && transaction.details?.rejectReason && (
                 <div className="flex gap-3 items-start p-3 bg-red-50 rounded-xl border border-red-100">
                   <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />

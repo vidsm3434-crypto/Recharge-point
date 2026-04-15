@@ -14,6 +14,7 @@ export interface UserProfile {
   kyc_status?: 'pending' | 'verified' | 'rejected';
   created_at: string;
   distributor_id?: string;
+  retailer_id?: string;
   created_by?: 'Distributor' | 'Self' | 'Referral';
 }
 

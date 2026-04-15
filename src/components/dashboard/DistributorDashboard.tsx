@@ -15,6 +15,7 @@ import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { cn } from '../../lib/utils';
+import { ReportsView } from '../reports/ReportsView';
 
 export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDistributorMode?: () => void }) {
   const { profile, fetchProfile } = useAuthContext();
@@ -137,14 +138,60 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
   }
 
   async function fetchTransactions() {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*, profiles(name, mobile)')
-      .or(`user_id.eq.${profile?.id},details->>distributor_id.eq.${profile?.id}`)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    if (!profile?.id) return;
     
-    if (data) setTransactions(data);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*, profiles(name, mobile, retailer_id, distributor_id)')
+        .or(`user_id.eq.${profile.id},details->>distributor_id.eq.${profile.id}`)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (error) {
+        console.warn('Join query failed in DistributorDashboard, trying separate fetch:', error);
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('transactions')
+          .select('*')
+          .or(`user_id.eq.${profile.id},details->>distributor_id.eq.${profile.id}`)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        
+        if (fallbackError) throw fallbackError;
+        
+        if (fallbackData) {
+          const userIds = [...new Set(fallbackData.map(t => t.user_id))].filter(Boolean);
+          let profiles: any[] = [];
+          
+          if (userIds.length > 0) {
+            const { data: pData, error: pError } = await supabase
+              .from('profiles')
+              .select('id, name, mobile, retailer_id, distributor_id')
+              .in('id', userIds);
+            
+            if (pError) {
+              const { data: pDataBasic } = await supabase
+                .from('profiles')
+                .select('id, name, mobile')
+                .in('id', userIds);
+              profiles = pDataBasic || [];
+            } else {
+              profiles = pData || [];
+            }
+          }
+
+          const mergedData = fallbackData.map(t => ({
+            ...t,
+            profiles: profiles.find(p => p.id === t.user_id)
+          }));
+          setTransactions(mergedData);
+        }
+      } else if (data) {
+        setTransactions(data);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
   }
 
   const handleToggleBlock = async (retailer: any) => {
@@ -325,6 +372,21 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
 
     setLoading(true);
     try {
+      // Generate Unique Retailer ID
+      let retailer_id = 'MB1001';
+      const { data: lastUser } = await supabase
+        .from('profiles')
+        .select('retailer_id')
+        .not('retailer_id', 'is', null)
+        .order('retailer_id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastUser && lastUser.retailer_id) {
+        const lastNum = parseInt(lastUser.retailer_id.replace('MB', ''));
+        retailer_id = `MB${lastNum + 1}`;
+      }
+
       // Use server-side API to create user without signing them in
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
@@ -333,6 +395,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
           ...newRetailer,
           role: 'retailer',
           distributor_id: profile?.id,
+          retailer_id,
           created_by: 'Distributor'
         })
       });
@@ -810,63 +873,8 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
         )}
 
         {activeTab === 'reports' && (
-          <div className="space-y-4">
-            <h3 className="font-bold text-slate-800">Advanced Reports</h3>
-            <Card className="border-none shadow-sm">
-              <CardContent className="p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Retailer Mobile</Label>
-                    <Input 
-                      placeholder="Mobile" 
-                      className="h-8 text-xs"
-                      value={reportFilters.retailerMobile}
-                      onChange={(e) => setReportFilters({...reportFilters, retailerMobile: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Target Mobile</Label>
-                    <Input 
-                      placeholder="Mobile" 
-                      className="h-8 text-xs"
-                      value={reportFilters.mobile}
-                      onChange={(e) => setReportFilters({...reportFilters, mobile: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Start Date</Label>
-                    <Input 
-                      type="date" 
-                      className="h-8 text-xs"
-                      value={reportFilters.startDate}
-                      onChange={(e) => setReportFilters({...reportFilters, startDate: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">End Date</Label>
-                    <Input 
-                      type="date" 
-                      className="h-8 text-xs"
-                      value={reportFilters.endDate}
-                      onChange={(e) => setReportFilters({...reportFilters, endDate: e.target.value})}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <div className="space-y-3">
-              {transactions
-                .filter(t => t.type === 'recharge')
-                .filter(t => !reportFilters.retailerMobile || t.profiles?.mobile.includes(reportFilters.retailerMobile))
-                .filter(t => !reportFilters.mobile || t.details?.mobile?.includes(reportFilters.mobile))
-                .map(txn => (
-                  <div key={txn.id}>
-                    <TransactionItem txn={txn} currentUserId={profile?.id || ''} />
-                  </div>
-                ))}
-            </div>
+          <div className="h-[calc(100vh-80px)] -mx-4 -mt-4 md:mx-0 md:mt-0">
+            <ReportsView />
           </div>
         )}
 
@@ -1405,9 +1413,10 @@ function TransactionItem({ txn, currentUserId }: { txn: any, currentUserId: stri
         </div>
         <div className="mt-3 pt-3 border-t border-slate-50 flex items-center justify-between">
           {txn.profiles && txn.user_id !== currentUserId ? (
-            <div className="text-[10px]">
-              <span className="text-slate-500">Retailer:</span>
-              <span className="font-medium text-slate-700 ml-1">{txn.profiles.name} ({txn.profiles.mobile})</span>
+            <div className="text-[10px] leading-tight">
+              <p className="text-primary font-bold">{txn.profiles.retailer_id || 'N/A'}</p>
+              <p className="text-slate-700 font-bold">{txn.profiles.name || 'N/A'}</p>
+              <p className="text-slate-500">({txn.profiles.mobile || 'N/A'})</p>
             </div>
           ) : <div />}
           <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 border-red-200 text-red-600 rounded hover:bg-red-50" onClick={handleComplain}>
