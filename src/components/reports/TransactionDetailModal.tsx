@@ -54,7 +54,7 @@ Order ID: ${transaction.details?.txnId || transaction.id}
 Date: ${new Date(transaction.timestamp).toLocaleString()}
 Ref ID: ${transaction.details?.opid || 'N/A'}
 State: ${transaction.details?.state || 'N/A'}
-${showRetailerInfo ? `Retailer: ${retailerProfile?.retailer_id || 'N/A'}\n${retailerProfile?.name || 'N/A'}\n(${retailerProfile?.mobile || 'N/A'})` : ''}
+${transaction.details?.closing_balance !== undefined ? `Closing Balance: ₹${transaction.details.closing_balance.toFixed(2)}\n` : ''}${transaction.details?.commission_earned !== undefined && transaction.details.commission_earned > 0 ? `Commission Earned: ₹${transaction.details.commission_earned.toFixed(2)}\n` : ''}${showRetailerInfo ? `Retailer: ${retailerProfile?.retailer_id || 'N/A'}\n${retailerProfile?.name || 'N/A'}\n(${retailerProfile?.mobile || 'N/A'})` : ''}
 Message: ${transaction.details?.error_message || transaction.details?.api_response?.message || 'N/A'}
 ----------------
 Generated via RechargePoint
@@ -169,6 +169,22 @@ Generated via RechargePoint
                 label="State (Circle)" 
                 value={transaction.details?.state || 'N/A'} 
               />
+              
+              {transaction.details?.closing_balance !== undefined && (
+                <DetailRow 
+                  icon={<Info className="h-4 w-4" />} 
+                  label="Closing Balance" 
+                  value={`₹${transaction.details.closing_balance.toFixed(2)}`} 
+                />
+              )}
+              
+              {transaction.details?.commission_earned !== undefined && transaction.details.commission_earned > 0 && (
+                <DetailRow 
+                  icon={<Info className="h-4 w-4" />} 
+                  label="Commission Earned" 
+                  value={`₹${transaction.details.commission_earned.toFixed(2)}`} 
+                />
+              )}
               
               {showRetailerInfo && retailerProfile && (
                 <div className="flex items-start gap-3 py-1">

@@ -341,6 +341,8 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
           'Transaction ID': t.details?.txnId || t.id,
           'Operator ID': t.details?.opid || 'N/A',
           Message: t.details?.error_message || t.details?.api_response?.message || 'N/A',
+          'Closing Balance': t.details?.closing_balance || 'N/A',
+          'Commission Earned': t.details?.commission_earned || 0,
         };
       } else if (view === 'wallet' || view === 'online_deposit' || view === 'manual_deposit') {
         return {
@@ -350,6 +352,18 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
           'Ref Number': t.details?.refNumber || t.details?.razorpay_payment_id || 'N/A',
           Note: t.details?.note || 'N/A',
           'Closing Balance': t.details?.closing_balance || 'N/A',
+        };
+      } else if (view === 'recharge') {
+        return {
+          ...base,
+          Mobile: t.details?.mobile || 'N/A',
+          Operator: t.details?.operator || 'N/A',
+          State: t.details?.state || 'N/A',
+          'Transaction ID': t.details?.txnId || t.id,
+          'Operator ID': t.details?.opid || 'N/A',
+          Message: t.details?.error_message || t.details?.api_response?.message || 'N/A',
+          'Closing Balance': t.details?.closing_balance || 'N/A',
+          'Commission Earned': t.details?.commission_earned || 0,
         };
       } else if (view === 'complaints') {
         return {
@@ -572,6 +586,11 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
                           {txn.details?.closing_balance !== undefined && (
                             <p className="text-[10px] text-slate-500 font-medium">
                               Bal: ₹{txn.details.closing_balance.toFixed(2)}
+                            </p>
+                          )}
+                          {txn.details?.commission_earned !== undefined && txn.details.commission_earned > 0 && (
+                            <p className="text-[10px] text-green-600 font-bold mt-0.5">
+                              Comm: ₹{txn.details.commission_earned.toFixed(2)}
                             </p>
                           )}
                         </div>
