@@ -49,7 +49,8 @@ export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelec
         details: {
           note: 'Distributor Upgrade Fee',
           type: 'debit',
-          txnId: `UPG${Date.now()}`
+          txnId: `UPG${Date.now()}`,
+          closing_balance: profile.wallet_balance - 500
         }
       }]);
 

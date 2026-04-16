@@ -247,7 +247,56 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
 
       const transactionId = apiData.txnId || apiData.txid || `RBH${Date.now()}`;
 
-      // 2. Save transaction to database
+      // 2. Calculate Commission before saving transaction
+      let retailerCommAmount = 0;
+      let distributorCommAmount = 0;
+      let adminProfitAmount = 0;
+
+      if (status === 'success') {
+        try {
+          const response = await fetch('/api/config/global');
+          const result = await response.json();
+          const globalConfig = result.data || {};
+          
+          const serviceType = 'mobile'; // Default to mobile for now
+          const defaultRates = globalConfig.commissions?.[serviceType] || { api: 3.5, retailer: 2.5, distributor: 0.7 };
+          
+          // Check for operator-specific override
+          const operatorName = formData.operator; // e.g., "Jio", "Airtel"
+          const operatorOverride = globalConfig.commissions?.operators?.[operatorName];
+          
+          // Hardcoded defaults based on user image if not in config
+          const opDefaults: Record<string, any> = {
+            'Airtel': { api: 0.80, retailer: 0.50, distributor: 0.20 },
+            'Vodafone': { api: 3.50, retailer: 2.50, distributor: 0.70 },
+            'Idea': { api: 3.50, retailer: 2.50, distributor: 0.70 },
+            'Jio': { api: 0.55, retailer: 0.35, distributor: 0.15 },
+            'BSNL': { api: 2.80, retailer: 2.00, distributor: 0.60 },
+            'Vi': { api: 3.50, retailer: 2.50, distributor: 0.70 }
+          };
+
+          const rates = {
+            api: operatorOverride?.api ?? opDefaults[operatorName]?.api ?? defaultRates.api ?? 3.5,
+            retailer: operatorOverride?.retailer ?? opDefaults[operatorName]?.retailer ?? defaultRates.retailer ?? 2.5,
+            distributor: operatorOverride?.distributor ?? opDefaults[operatorName]?.distributor ?? defaultRates.distributor ?? 0.7
+          };
+          
+          const apiCommRate = (rates.api || 0) / 100;
+          const retailerCommRate = (rates.retailer || 0) / 100;
+          const distributorCommRate = (rates.distributor || 0) / 100;
+          
+          // Calculate Amounts
+          retailerCommAmount = amount * retailerCommRate;
+          distributorCommAmount = amount * distributorCommRate;
+          adminProfitAmount = amount * (apiCommRate - retailerCommRate - distributorCommRate);
+        } catch (err) {
+          console.error("Error calculating commission:", err);
+        }
+      }
+
+      // 3. Save transaction to database
+      const closingBalance = status === 'success' ? (profile?.wallet_balance || 0) - amount + retailerCommAmount : profile?.wallet_balance || 0;
+
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert([
@@ -264,7 +313,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               opid: apiData.apiTxId || apiData.txid || apiData.opid,
               error_message: status === 'failed' ? (apiData.message || apiData.msg || apiData.ERROR) : null,
               api_response: apiData,
-              closing_balance: status === 'success' ? (profile?.wallet_balance || 0) - amount : profile?.wallet_balance || 0
+              closing_balance: closingBalance,
+              commission_earned: retailerCommAmount
             },
             retailer_name: profile?.name,
             retailer_mobile: profile?.mobile
@@ -275,53 +325,13 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
 
       if (txnError) throw txnError;
 
-      // 3. Update wallet and distribute commission if successful
+      // 4. Update wallet and distribute commission if successful
       if (status === 'success') {
-        // --- COMMISSION LOGIC (Golden Rule) ---
         try {
-          // 1. Fetch Global Config for Commission Rates
-          const { data: configData } = await supabase
-            .from('config')
-            .select('value')
-            .eq('key', 'global')
-            .maybeSingle();
-          
-          const globalConfig = configData?.value || {};
-          const serviceType = 'mobile'; // Default to mobile for now
-          const defaultRates = globalConfig.commissions?.[serviceType] || { api: 3.5, retailer: 2.5, distributor: 0.7 };
-          
-          // Check for operator-specific override
-          const operatorName = formData.operator; // e.g., "Jio", "Airtel"
-          const operatorOverride = globalConfig.commissions?.operators?.[operatorName];
-          
-          // Hardcoded defaults based on user image if not in config
-          const opDefaults: Record<string, any> = {
-            'Airtel': { api: 0.80, retailer: 0.50, distributor: 0.20 },
-            'Vodafone': { api: 3.50, retailer: 2.50, distributor: 0.70 },
-            'Idea': { api: 3.50, retailer: 2.50, distributor: 0.70 },
-            'Jio': { api: 0.55, retailer: 0.35, distributor: 0.15 },
-            'BSNL': { api: 2.80, retailer: 2.00, distributor: 0.60 }
-          };
-
-          const rates = {
-            api: operatorOverride?.api ?? opDefaults[operatorName]?.api ?? defaultRates.api ?? 3.5,
-            retailer: operatorOverride?.retailer ?? opDefaults[operatorName]?.retailer ?? defaultRates.retailer ?? 2.5,
-            distributor: operatorOverride?.distributor ?? opDefaults[operatorName]?.distributor ?? defaultRates.distributor ?? 0.7
-          };
-          
-          const apiCommRate = (rates.api || 0) / 100;
-          const retailerCommRate = (rates.retailer || 0) / 100;
-          const distributorCommRate = (rates.distributor || 0) / 100;
-          
-          // Calculate Amounts
-          const retailerCommAmount = amount * retailerCommRate;
-          let distributorCommAmount = amount * distributorCommRate;
-          let adminProfitAmount = amount * (apiCommRate - retailerCommRate - distributorCommRate);
-
           // 2. Credit Retailer
           const { error: retailerWalletError } = await supabase
             .from('profiles')
-            .update({ wallet_balance: (profile?.wallet_balance || 0) - amount + retailerCommAmount })
+            .update({ wallet_balance: closingBalance })
             .eq('id', profile?.id);
 
           if (retailerWalletError) throw retailerWalletError;
@@ -336,7 +346,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               note: `Self Commission for recharge of ₹${amount}`,
               recharge_amount: amount,
               mobile: formData.mobile,
-              txnId: `RCOM${Date.now()}`
+              txnId: `RCOM${Date.now()}`,
+              closing_balance: closingBalance
             }
           }]);
 
@@ -349,10 +360,11 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               .maybeSingle();
 
             if (distributor) {
+              const distributorNewBalance = (distributor.wallet_balance || 0) + distributorCommAmount;
               // Credit Distributor
               await supabase
                 .from('profiles')
-                .update({ wallet_balance: (distributor.wallet_balance || 0) + distributorCommAmount })
+                .update({ wallet_balance: distributorNewBalance })
                 .eq('id', distributor.id);
 
               // Log Distributor Commission
@@ -366,7 +378,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                   retailer_id: profile.id,
                   recharge_amount: amount,
                   mobile: formData.mobile,
-                  txnId: `DCOM${Date.now()}`
+                  txnId: `DCOM${Date.now()}`,
+                  closing_balance: distributorNewBalance
                 }
               }]);
             } else {

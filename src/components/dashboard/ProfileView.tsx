@@ -61,7 +61,8 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
         details: {
           note: 'Distributor Upgrade Fee',
           type: 'debit',
-          txnId: `UPG${Date.now()}`
+          txnId: `UPG${Date.now()}`,
+          closing_balance: profile.wallet_balance - 500
         }
       }]);
 

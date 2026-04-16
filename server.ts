@@ -424,9 +424,10 @@ const OPERATOR_MAPPING: Record<string, string> = {
           .maybeSingle();
 
         if (profile) {
+          const newBalance = (profile.wallet_balance || 0) + refundAmount;
           await supabase
             .from("profiles")
-            .update({ wallet_balance: (profile.wallet_balance || 0) + refundAmount })
+            .update({ wallet_balance: newBalance })
             .eq("id", transaction.user_id);
 
           // Log refund transaction
@@ -439,7 +440,8 @@ const OPERATOR_MAPPING: Record<string, string> = {
               details: {
                 note: `Refund for failed recharge ${tranId}`,
                 original_txn_id: transaction.id,
-                mobile: transaction.details?.mobile || 'N/A'
+                mobile: transaction.details?.mobile || 'N/A',
+                closing_balance: newBalance
               }
             }
           ]);
@@ -769,7 +771,8 @@ const OPERATOR_MAPPING: Record<string, string> = {
             note: remark || `Admin ${type}`,
             adminAction: true,
             type: type,
-            txnId: `ADM${Date.now()}`
+            txnId: `ADM${Date.now()}`,
+            closing_balance: newBalance
           }
         }
       ]);
