@@ -37,16 +37,13 @@ export function PlansManagement() {
 
   async function fetchPlans() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('plans')
-      .select('*')
-      .order('amount', { ascending: true });
-    
-    if (error) {
+    try {
+      const response = await fetch('/api/config/recharge_plans');
+      if (!response.ok) throw new Error('Failed to fetch plans');
+      const result = await response.json();
+      setPlans(result.data || []);
+    } catch (error) {
       console.error('Error fetching plans:', error);
-      // If table doesn't exist, we might need to handle it
-    } else {
-      setPlans(data || []);
     }
     setLoading(false);
   }
@@ -57,15 +54,20 @@ export function PlansManagement() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('plans')
-      .insert([newPlan]);
+    const planToAdd = { ...newPlan, id: Math.random().toString(36).substr(2, 9) };
+    const updatedPlans = [...plans, planToAdd];
 
-    if (error) {
-      toast.error('Failed to add plan');
-    } else {
+    try {
+      const response = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'recharge_plans', value: updatedPlans })
+      });
+
+      if (!response.ok) throw new Error('Failed to add plan');
+      
       toast.success('Plan added successfully');
-      fetchPlans();
+      setPlans(updatedPlans);
       setNewPlan({
         operator: 'Airtel',
         amount: 0,
@@ -73,25 +75,99 @@ export function PlansManagement() {
         description: '',
         type: 'unlimited'
       });
+    } catch (error) {
+      toast.error('Failed to add plan');
     }
   }
 
   async function handleDeletePlan(id: string) {
-    const { error } = await supabase
-      .from('plans')
-      .delete()
-      .eq('id', id);
+    const updatedPlans = plans.filter(p => p.id !== id);
+    try {
+      const response = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'recharge_plans', value: updatedPlans })
+      });
 
-    if (error) {
-      toast.error('Failed to delete plan');
-    } else {
+      if (!response.ok) throw new Error('Failed to delete plan');
+      
       toast.success('Plan deleted');
-      fetchPlans();
+      setPlans(updatedPlans);
+    } catch (error) {
+      toast.error('Failed to delete plan');
+    }
+  }
+
+  async function handleSeedPlans() {
+    if (!confirm('This will add default Vi plans to your list. Continue?')) return;
+    
+    const viPlans = [
+      { operator: 'Vi', type: 'unlimited', amount: 349, validity: '28 Days', description: '1.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 379, validity: '1 Month', description: '2 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 409, validity: '28 Days', description: '2.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 449, validity: '28 Days', description: '3 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 469, validity: '28 Days', description: '2.5 GB/day + Disney+ Hotstar' },
+      { operator: 'Vi', type: 'unlimited', amount: 539, validity: '28 Days', description: '4 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 579, validity: '56 Days', description: '1.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 666, validity: '64 Days', description: '1.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 795, validity: '56 Days', description: '3 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 859, validity: '84 Days', description: '1.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 979, validity: '84 Days', description: '2 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 994, validity: '84 Days', description: '2 GB/day + Disney+ Hotstar' },
+      { operator: 'Vi', type: 'unlimited', amount: 1749, validity: '180 Days', description: '1.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 3499, validity: '365 Days', description: '1.5 GB/day + Unlimited Calls' },
+      { operator: 'Vi', type: 'unlimited', amount: 3699, validity: '365 Days', description: '2 GB/day + Disney+ Hotstar' },
+      { operator: 'Vi', type: 'data', amount: 23, validity: '1 Day', description: '1 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 26, validity: '1 Day', description: '1.5 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 33, validity: '2 Days', description: '2 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 48, validity: '3 Days', description: '6 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 49, validity: '1 Day', description: '20 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 98, validity: '21 Days', description: '9 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 118, validity: '28 Days', description: '12 GB Data' },
+      { operator: 'Vi', type: 'data', amount: 151, validity: '30 Days', description: '8 GB Data + Disney+ Hotstar' },
+      { operator: 'Vi', type: 'data', amount: 175, validity: '28 Days', description: '10 GB Data + 16 OTT Apps' },
+      { operator: 'Vi', type: 'data', amount: 298, validity: '28 Days', description: '50 GB Data (Bulk)' },
+      { operator: 'Vi', type: 'data', amount: 418, validity: '56 Days', description: '100 GB Data (Bulk)' },
+      { operator: 'Vi', type: 'talktime', amount: 10, validity: 'Unlimited', description: '₹7.47 Talktime' },
+      { operator: 'Vi', type: 'talktime', amount: 20, validity: 'Unlimited', description: '₹14.95 Talktime' },
+      { operator: 'Vi', type: 'talktime', amount: 30, validity: 'Unlimited', description: '₹22.42 Talktime' },
+      { operator: 'Vi', type: 'talktime', amount: 50, validity: 'Unlimited', description: '₹39.37 Talktime' },
+      { operator: 'Vi', type: 'talktime', amount: 100, validity: 'Unlimited', description: '₹81.75 Talktime' },
+      { operator: 'Vi', type: 'talktime', amount: 500, validity: '28 Days', description: '₹423.73 Talktime' },
+    ];
+
+    const viPlansWithIds = viPlans.map(p => ({
+      ...p,
+      id: Math.random().toString(36).substr(2, 9)
+    }));
+
+    const otherPlans = plans.filter(p => p.operator !== 'Vi');
+    const updatedPlans = [...otherPlans, ...viPlansWithIds];
+
+    try {
+      const response = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'recharge_plans', value: updatedPlans })
+      });
+
+      if (!response.ok) throw new Error('Failed to seed plans');
+      
+      toast.success('Vi plans seeded successfully');
+      setPlans(updatedPlans);
+    } catch (error) {
+      toast.error('Failed to seed plans');
     }
   }
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-black text-slate-800">Recharge Plans Management</h3>
+        <Button variant="outline" size="sm" className="gap-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50" onClick={handleSeedPlans}>
+          <RefreshCw className="h-4 w-4" /> Seed Default Plans
+        </Button>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Add New Plan</CardTitle>

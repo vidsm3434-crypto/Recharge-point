@@ -39,7 +39,11 @@ type ReportType =
   | 'online_deposit' 
   | 'manual_deposit';
 
-export function ReportsView() {
+interface ReportsViewProps {
+  mode?: 'personal' | 'management';
+}
+
+export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
   const { profile } = useAuthContext();
   const [view, setView] = useState<ReportType>('menu');
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -60,37 +64,56 @@ export function ReportsView() {
       try {
         let userIds: string[] | null = [profile.id];
         
-        if (profile.role === 'distributor') {
-          const { data: retailers } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('distributor_id', profile.id);
-            
-          if (retailers) {
-            userIds = [...userIds, ...retailers.map(r => r.id)];
+        if (mode === 'management') {
+          if (profile.role === 'distributor') {
+            const { data: retailers } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('distributor_id', profile.id);
+              
+            if (retailers) {
+              userIds = [...userIds, ...retailers.map(r => r.id)];
+            }
+          } else if (profile.role === 'admin' || profile.mobile === '7872303434') {
+            // Admin in management mode (Distributor Dashboard)
+            // Should see their own retailers' transactions
+            const { data: retailers } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('distributor_id', profile.id);
+              
+            if (retailers) {
+              userIds = [...userIds, ...retailers.map(r => r.id)];
+            }
           }
-        } else if (profile.role === 'admin' || profile.mobile === '7872303434') {
-          userIds = null; // Fetch all for admin
+        } else {
+          // Personal mode: ALWAYS filter by own ID, even for admin
+          userIds = [profile.id];
         }
+        // In 'personal' mode, userIds remains [profile.id]
 
         let txnsData: any[] | null = null;
         let txnsError: any = null;
 
-        // Try with join first
-        const { data, error } = await supabase
+        // Fetch with proper filtering at database level
+        let query = supabase
           .from('transactions')
-          .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)')
+          .select('*, profiles:user_id(name, mobile, retailer_id, distributor_id)');
+
+        if (userIds) {
+          query = query.in('user_id', userIds);
+        }
+
+        const { data, error } = await query
+          .order('created_at', { ascending: false })
           .limit(2000);
         
         txnsData = data;
         txnsError = error;
 
-        if (userIds && !txnsError) {
-          txnsData = data?.filter(t => userIds!.includes(t.user_id)) || [];
-        }
-
         if (txnsError) {
           console.warn('Join query failed in ReportsView, trying separate fetch:', txnsError);
+          // Fallback logic for older schemas or missing columns
           let fallbackQuery = supabase
             .from('transactions')
             .select('*')
@@ -100,7 +123,8 @@ export function ReportsView() {
             fallbackQuery = fallbackQuery.in('user_id', userIds);
           }
 
-          const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+          // Try ordering by timestamp if created_at fails
+          const { data: fallbackData, error: fallbackError } = await fallbackQuery.order('timestamp', { ascending: false });
           
           if (fallbackError) throw fallbackError;
           
@@ -161,7 +185,7 @@ export function ReportsView() {
         const newTxn = payload.new;
         
         // Filter logic for real-time
-        if (profile.role === 'distributor') {
+        if (mode === 'management' && profile.role === 'distributor') {
           if (newTxn.user_id === profile.id) {
             setTransactions(prev => [newTxn, ...prev].slice(0, 500));
           } else {
@@ -175,7 +199,11 @@ export function ReportsView() {
               setTransactions(prev => [newTxn, ...prev].slice(0, 500));
             }
           }
+        } else if (mode === 'management' && (profile.role === 'admin' || profile.mobile === '7872303434')) {
+          // Admin sees everything in management mode
+          setTransactions(prev => [newTxn, ...prev].slice(0, 500));
         } else if (newTxn.user_id === profile.id) {
+          // Personal mode or Retailer: only show own
           setTransactions(prev => [newTxn, ...prev].slice(0, 500));
         }
       })
@@ -525,11 +553,11 @@ export function ReportsView() {
                           <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || txn.details?.note || 'N/A'}</p>
                           
                           {/* Retailer Visibility Rule for Reports */}
-                          {profile?.role !== 'retailer' && txn.profiles && (
+                          {mode === 'management' && profile?.role !== 'retailer' && txn.profiles && (
                             <div className="mt-1 text-[9px] leading-tight">
                               <p className="text-primary font-bold">{txn.profiles.retailer_id || 'N/A'}</p>
-                              <p className="text-slate-600 font-bold">{txn.profiles.name || 'N/A'}</p>
-                              <p className="text-slate-400">({txn.profiles.mobile || 'N/A'})</p>
+                              <p className="text-slate-700 font-bold">{txn.profiles.name || 'N/A'}</p>
+                              <p className="text-slate-500">({txn.profiles.mobile || 'N/A'})</p>
                             </div>
                           )}
                         </div>

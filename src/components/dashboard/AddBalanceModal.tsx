@@ -12,6 +12,7 @@ import { CreditCard, Landmark, Send, Info, CheckCircle2 } from 'lucide-react';
 interface AddBalanceModalProps {
   open: boolean;
   onClose: () => void;
+  initialAmount?: string;
 }
 
 declare global {
@@ -20,13 +21,20 @@ declare global {
   }
 }
 
-export function AddBalanceModal({ open, onClose }: AddBalanceModalProps) {
+export function AddBalanceModal({ open, onClose, initialAmount }: AddBalanceModalProps) {
   const { profile } = useAuthContext();
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(initialAmount || '');
   const [refNumber, setRefNumber] = useState('');
   const [upiId, setUpiId] = useState('');
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'manual'>('online');
+
+  // Update amount if initialAmount changes
+  React.useEffect(() => {
+    if (initialAmount) {
+      setAmount(initialAmount);
+    }
+  }, [initialAmount]);
 
   const handleManualRequest = async () => {
     const cleanRefNumber = refNumber.trim().toUpperCase();

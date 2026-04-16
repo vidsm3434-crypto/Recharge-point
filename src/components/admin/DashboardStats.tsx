@@ -24,6 +24,11 @@ export function DashboardStats({ users, transactions, onViewMpinRequests, onView
   const successTxns = transactions.filter(t => t.status === 'success');
   const failedTxns = transactions.filter(t => t.status === 'failed');
 
+  const adminProfits = transactions.filter(t => t.type === 'admin_profit');
+  const todayProfit = adminProfits
+    .filter(t => (t.created_at || t.timestamp || '').startsWith(today))
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
+
   const chartData = [
     { name: 'Success', value: successTxns.length, color: '#22c55e' },
     { name: 'Failed', value: failedTxns.length, color: '#ef4444' },
@@ -33,6 +38,7 @@ export function DashboardStats({ users, transactions, onViewMpinRequests, onView
   const stats = [
     { label: 'Total Users', value: users.length, icon: <Users className="text-blue-600" />, sub: `${retailers.length} Ret / ${distributors.length} Dist` },
     { label: 'Total Float', value: `₹${users.reduce((acc, u) => acc + (u.wallet_balance || 0), 0).toFixed(0)}`, icon: <Wallet className="text-green-600" />, sub: 'System Balance' },
+    { label: "Today's Profit", value: `₹${todayProfit.toFixed(2)}`, icon: <TrendingUp className="text-green-600" />, sub: 'Admin Earnings' },
     { label: 'Today Recharges', value: todayTxns.length, icon: <Smartphone className="text-purple-600" />, sub: `₹${todayTxns.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(0)}` },
     { label: 'Success Rate', value: `${((successTxns.length / (transactions.length || 1)) * 100).toFixed(1)}%`, icon: <TrendingUp className="text-orange-600" />, sub: `${successTxns.length} Success` },
   ];

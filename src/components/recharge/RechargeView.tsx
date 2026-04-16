@@ -15,7 +15,8 @@ import {
   Contact2, 
   ChevronDown,
   Clock,
-  Loader2
+  Loader2,
+  PlusCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -23,6 +24,7 @@ import { cn } from '../../lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ScrollArea } from '../ui/scroll-area';
+import { AddBalanceModal } from '../dashboard/AddBalanceModal';
 
 const operators = [
   { id: 'Airtel', name: 'Airtel', logo: 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png' },
@@ -51,6 +53,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
   const [showOperatorList, setShowOperatorList] = useState(false);
   const [showCircleList, setShowCircleList] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
+  const [showAddBalance, setShowAddBalance] = useState(false);
+  const [addBalanceAmount, setAddBalanceAmount] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [plans, setPlans] = useState<any[]>([]);
@@ -119,14 +123,14 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
     setLoadingPlans(true);
     setShowPlans(true);
     try {
-      const { data, error } = await supabase
-        .from('plans')
-        .select('*')
-        .eq('operator', formData.operator)
-        .order('amount', { ascending: true });
+      const response = await fetch('/api/config/recharge_plans');
+      if (!response.ok) throw new Error('Failed to fetch plans');
+      const result = await response.json();
       
-      if (error) throw error;
-      setPlans(data || []);
+      const allPlans = result.data || [];
+      const filteredPlans = allPlans.filter((p: any) => p.operator === formData.operator);
+      
+      setPlans(filteredPlans);
     } catch (error) {
       toast.error('Failed to fetch plans');
     } finally {
@@ -144,10 +148,17 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         toast.error('Please fill all details');
         return;
       }
-      if (parseFloat(formData.amount) > (profile?.wallet_balance || 0)) {
-        toast.error('Insufficient wallet balance');
+      
+      const amount = parseFloat(formData.amount);
+      const balance = profile?.wallet_balance || 0;
+      
+      if (amount > balance) {
+        setAddBalanceAmount((amount - balance).toString());
+        setStep(2);
+        setProcessingStep(-1); // Low balance state
         return;
       }
+      
       setShowConfirmModal(true);
     }
   };
@@ -264,50 +275,132 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
 
       if (txnError) throw txnError;
 
-      // 3. Update wallet if successful
+      // 3. Update wallet and distribute commission if successful
       if (status === 'success') {
-        const { error: walletError } = await supabase
-          .from('profiles')
-          .update({ wallet_balance: (profile?.wallet_balance || 0) - amount })
-          .eq('id', profile?.id);
-
-        if (walletError) throw walletError;
-
-        // --- COMMISSION LOGIC ---
-        if (profile?.distributor_id) {
-          const { data: distributor, error: distFetchError } = await supabase
-            .from('profiles')
-            .select('id, wallet_balance')
-            .eq('id', profile.distributor_id)
+        // --- COMMISSION LOGIC (Golden Rule) ---
+        try {
+          // 1. Fetch Global Config for Commission Rates
+          const { data: configData } = await supabase
+            .from('config')
+            .select('value')
+            .eq('key', 'global')
             .maybeSingle();
+          
+          const globalConfig = configData?.value || {};
+          const serviceType = 'mobile'; // Default to mobile for now
+          const defaultRates = globalConfig.commissions?.[serviceType] || { api: 3.5, retailer: 2.5, distributor: 0.7 };
+          
+          // Check for operator-specific override
+          const operatorName = formData.operator; // e.g., "Jio", "Airtel"
+          const operatorOverride = globalConfig.commissions?.operators?.[operatorName];
+          
+          // Hardcoded defaults based on user image if not in config
+          const opDefaults: Record<string, any> = {
+            'Airtel': { api: 0.80, retailer: 0.50, distributor: 0.20 },
+            'Vodafone': { api: 3.50, retailer: 2.50, distributor: 0.70 },
+            'Idea': { api: 3.50, retailer: 2.50, distributor: 0.70 },
+            'Jio': { api: 0.55, retailer: 0.35, distributor: 0.15 },
+            'BSNL': { api: 2.80, retailer: 2.00, distributor: 0.60 }
+          };
 
-          if (!distFetchError && distributor) {
-            const commissionRate = 0.02; 
-            const commissionAmount = amount * commissionRate;
+          const rates = {
+            api: operatorOverride?.api ?? opDefaults[operatorName]?.api ?? defaultRates.api ?? 3.5,
+            retailer: operatorOverride?.retailer ?? opDefaults[operatorName]?.retailer ?? defaultRates.retailer ?? 2.5,
+            distributor: operatorOverride?.distributor ?? opDefaults[operatorName]?.distributor ?? defaultRates.distributor ?? 0.7
+          };
+          
+          const apiCommRate = (rates.api || 0) / 100;
+          const retailerCommRate = (rates.retailer || 0) / 100;
+          const distributorCommRate = (rates.distributor || 0) / 100;
+          
+          // Calculate Amounts
+          const retailerCommAmount = amount * retailerCommRate;
+          let distributorCommAmount = amount * distributorCommRate;
+          let adminProfitAmount = amount * (apiCommRate - retailerCommRate - distributorCommRate);
 
-            const { error: distWalletError } = await supabase
-              .from('profiles')
-              .update({ wallet_balance: (distributor.wallet_balance || 0) + commissionAmount })
-              .eq('id', distributor.id);
+          // 2. Credit Retailer
+          const { error: retailerWalletError } = await supabase
+            .from('profiles')
+            .update({ wallet_balance: (profile?.wallet_balance || 0) - amount + retailerCommAmount })
+            .eq('id', profile?.id);
 
-            if (!distWalletError) {
-              await supabase.from('transactions').insert([
-                {
-                  user_id: distributor.id,
-                  type: 'commission',
-                  amount: commissionAmount,
-                  status: 'success',
-                  details: {
-                    note: `Commission from ${profile.name} for recharge of ₹${amount}`,
-                    retailer_id: profile.id,
-                    recharge_amount: amount,
-                    mobile: formData.mobile,
-                    txnId: `COM${Date.now()}`
-                  }
-                }
-              ]);
+          if (retailerWalletError) throw retailerWalletError;
+
+          // Log Retailer Commission
+          await supabase.from('transactions').insert([{
+            user_id: profile?.id,
+            type: 'commission',
+            amount: retailerCommAmount,
+            status: 'success',
+            details: {
+              note: `Self Commission for recharge of ₹${amount}`,
+              recharge_amount: amount,
+              mobile: formData.mobile,
+              txnId: `RCOM${Date.now()}`
             }
+          }]);
+
+          // 3. Handle Distributor
+          if (profile?.distributor_id) {
+            const { data: distributor } = await supabase
+              .from('profiles')
+              .select('id, wallet_balance')
+              .eq('id', profile.distributor_id)
+              .maybeSingle();
+
+            if (distributor) {
+              // Credit Distributor
+              await supabase
+                .from('profiles')
+                .update({ wallet_balance: (distributor.wallet_balance || 0) + distributorCommAmount })
+                .eq('id', distributor.id);
+
+              // Log Distributor Commission
+              await supabase.from('transactions').insert([{
+                user_id: distributor.id,
+                type: 'commission',
+                amount: distributorCommAmount,
+                status: 'success',
+                details: {
+                  note: `Commission from ${profile.name} for recharge of ₹${amount}`,
+                  retailer_id: profile.id,
+                  recharge_amount: amount,
+                  mobile: formData.mobile,
+                  txnId: `DCOM${Date.now()}`
+                }
+              }]);
+            } else {
+              // If distributor not found, distributor share goes to Admin
+              adminProfitAmount += distributorCommAmount;
+              distributorCommAmount = 0;
+            }
+          } else {
+            // If no distributor linked, distributor share goes to Admin
+            adminProfitAmount += distributorCommAmount;
+            distributorCommAmount = 0;
           }
+
+          // 4. Log Admin Profit (Internal tracking via a specific transaction or log)
+          // We can log this to a special 'admin_profits' table or just as a system transaction
+          await supabase.from('transactions').insert([{
+            user_id: 'SYSTEM_ADMIN', // Placeholder for admin tracking
+            type: 'admin_profit',
+            amount: adminProfitAmount,
+            status: 'success',
+            details: {
+              note: `Profit from recharge of ₹${amount} by ${profile?.name}`,
+              retailer_id: profile?.id,
+              distributor_id: profile?.distributor_id,
+              api_comm: amount * apiCommRate,
+              retailer_comm: retailerCommAmount,
+              distributor_comm: distributorCommAmount,
+              txnId: `APRO${Date.now()}`
+            }
+          }]);
+
+        } catch (commError) {
+          console.error('Commission distribution failed:', commError);
+          // We don't fail the recharge if commission fails, but we log it
         }
       }
 
@@ -562,127 +655,177 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="fixed inset-0 z-50 bg-white flex flex-col p-6 pt-24"
             >
-              <div className="w-full max-w-sm mx-auto space-y-12">
-                <div className="text-center space-y-2 mb-8">
-                  <h3 className="text-2xl font-black text-slate-900">Processing Recharge</h3>
-                  <p className="text-slate-500 font-medium">Please do not close the app</p>
-                </div>
-
-                <div className="space-y-10">
-                  {/* Step 1: Initiated */}
-                  <motion.div 
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: processingStep >= 1 ? 1 : 0.3, x: processingStep >= 1 ? 0 : -20 }}
-                    className="flex items-center gap-5"
-                  >
-                    <div className={cn(
-                      "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                      processingStep >= 1 ? "border-blue-600 bg-blue-50" : "border-slate-200"
-                    )}>
-                      {processingStep > 1 ? (
-                        <CheckCircle2 className="h-7 w-7 text-blue-600" />
-                      ) : (
-                        <Loader2 className="h-7 w-7 text-blue-600 animate-spin" />
-                      )}
+              {processingStep === -1 ? (
+                <div className="w-full max-w-sm mx-auto space-y-8 text-center">
+                  <div className="relative mx-auto w-24 h-24">
+                    <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-20" />
+                    <div className="relative bg-red-50 rounded-full p-6 border-4 border-white shadow-xl">
+                      <PlusCircle className="h-12 w-12 text-red-600" />
                     </div>
-                    <span className={cn(
-                      "text-xl font-black transition-all duration-500",
-                      processingStep >= 1 ? "text-slate-900" : "text-slate-300"
-                    )}>Transaction Initiated</span>
-                  </motion.div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h2 className="text-2xl font-black text-slate-800">Insufficient Balance</h2>
+                    <p className="text-slate-500 font-medium">You need ₹{addBalanceAmount} more to complete this recharge.</p>
+                  </div>
 
-                  {/* Step 2: Wallet Deducted */}
-                  <motion.div 
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: processingStep >= 2 ? 1 : 0.3, x: processingStep >= 2 ? 0 : -20 }}
-                    className="flex items-center gap-5"
-                  >
-                    <div className={cn(
-                      "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                      processingStep >= 2 ? "border-green-600 bg-green-50" : "border-slate-200"
-                    )}>
-                      {processingStep > 2 ? (
-                        <CheckCircle2 className="h-7 w-7 text-green-600" />
-                      ) : processingStep === 2 ? (
-                        <Loader2 className="h-7 w-7 text-green-600 animate-spin" />
-                      ) : (
-                        <div className="h-3 w-3 rounded-full bg-slate-200" />
-                      )}
-                    </div>
-                    <span className={cn(
-                      "text-xl font-black transition-all duration-500",
-                      processingStep >= 2 ? "text-slate-900" : "text-slate-300"
-                    )}>Wallet Deducted</span>
-                  </motion.div>
+                  <Card className="border-none bg-white shadow-xl rounded-3xl overflow-hidden">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-slate-500">Recharge Amount</span>
+                        <span className="font-bold">₹{formData.amount}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-slate-500">Current Balance</span>
+                        <span className="font-bold">₹{profile?.wallet_balance?.toFixed(2)}</span>
+                      </div>
+                      <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                        <span className="text-slate-800 font-bold">Required to Add</span>
+                        <span className="text-xl font-black text-red-600">₹{addBalanceAmount}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  {/* Step 3: Processing / Success / Failed */}
-                  <motion.div 
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: processingStep >= 4 ? 1 : 0.3, x: processingStep >= 4 ? 0 : -20 }}
-                    className="flex items-center gap-5"
-                  >
-                    <div className={cn(
-                      "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                      processingStep === 5 ? "border-green-600 bg-green-50" : 
-                      processingStep === 6 ? "border-red-600 bg-red-50" :
-                      processingStep === 4 ? "border-blue-600 bg-blue-50" : "border-slate-200"
-                    )}>
-                      {processingStep === 5 ? (
-                        <CheckCircle2 className="h-7 w-7 text-green-600" />
-                      ) : processingStep === 6 ? (
-                        <XCircle className="h-7 w-7 text-red-600" />
-                      ) : processingStep === 4 ? (
-                        <Loader2 className="h-7 w-7 text-blue-600 animate-spin" />
-                      ) : (
-                        <div className="h-3 w-3 rounded-full bg-slate-200" />
-                      )}
-                    </div>
-                    <div className="flex flex-col">
-                      <span className={cn(
-                        "text-xl font-black transition-all duration-500",
-                        processingStep >= 4 ? "text-slate-900" : "text-slate-300"
-                      )}>
-                        {processingStep === 5 ? "Recharge Successful" : 
-                         processingStep === 6 ? "Recharge Failed" : 
-                         "Recharge Processing..."}
-                      </span>
-                    </div>
-                  </motion.div>
-                </div>
-
-                <div className="pt-6">
-                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                    <motion.div 
-                      initial={{ width: "0%" }}
-                      animate={{ width: `${Math.min((processingStep / 5) * 100, 100)}%` }}
-                      className={cn(
-                        "h-full transition-all duration-500",
-                        processingStep === 6 ? "bg-red-500" : "bg-blue-600"
-                      )}
-                    />
+                  <div className="space-y-3">
+                    <Button 
+                      className="w-full h-14 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-3"
+                      onClick={() => setShowAddBalance(true)}
+                    >
+                      <PlusCircle className="h-5 w-5" />
+                      Add Balance Online
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      className="w-full text-slate-500 font-bold"
+                      onClick={() => setStep(1)}
+                    >
+                      Cancel & Go Back
+                    </Button>
                   </div>
                 </div>
+              ) : (
+                <div className="w-full max-w-sm mx-auto space-y-12">
+                  <div className="text-center space-y-2 mb-8">
+                    <h3 className="text-2xl font-black text-slate-900">Processing Recharge</h3>
+                    <p className="text-slate-500 font-medium">Please do not close the app</p>
+                  </div>
 
-                <AnimatePresence>
-                  {(processingStep === 3 || processingStep === 4) && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      className="pt-12"
+                  <div className="space-y-10">
+                    {/* Step 1: Initiated */}
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: processingStep >= 1 ? 1 : 0.3, x: processingStep >= 1 ? 0 : -20 }}
+                      className="flex items-center gap-5"
                     >
-                      <Button 
-                        className="w-full h-16 bg-blue-700 hover:bg-blue-800 text-white text-2xl font-black rounded-3xl shadow-2xl flex items-center justify-center gap-4 border-4 border-blue-100/30"
-                        onClick={() => continueRecharge(true)}
-                      >
-                        <CheckCircle2 className="h-8 w-8" />
-                        OK
-                      </Button>
-                      <p className="text-center text-slate-400 text-sm mt-6 font-bold uppercase tracking-widest">Tap OK to Complete</p>
+                      <div className={cn(
+                        "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                        processingStep >= 1 ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                      )}>
+                        {processingStep > 1 ? (
+                          <CheckCircle2 className="h-7 w-7 text-blue-600" />
+                        ) : (
+                          <Loader2 className="h-7 w-7 text-blue-600 animate-spin" />
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-xl font-black transition-all duration-500",
+                        processingStep >= 1 ? "text-slate-900" : "text-slate-300"
+                      )}>Transaction Initiated</span>
                     </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+
+                    {/* Step 2: Wallet Deducted */}
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: processingStep >= 2 ? 1 : 0.3, x: processingStep >= 2 ? 0 : -20 }}
+                      className="flex items-center gap-5"
+                    >
+                      <div className={cn(
+                        "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                        processingStep >= 2 ? "border-green-600 bg-green-50" : "border-slate-200"
+                      )}>
+                        {processingStep > 2 ? (
+                          <CheckCircle2 className="h-7 w-7 text-green-600" />
+                        ) : processingStep === 2 ? (
+                          <Loader2 className="h-7 w-7 text-green-600 animate-spin" />
+                        ) : (
+                          <div className="h-3 w-3 rounded-full bg-slate-200" />
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-xl font-black transition-all duration-500",
+                        processingStep >= 2 ? "text-slate-900" : "text-slate-300"
+                      )}>Wallet Deducted</span>
+                    </motion.div>
+
+                    {/* Step 3: Processing / Success / Failed */}
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: processingStep >= 4 ? 1 : 0.3, x: processingStep >= 4 ? 0 : -20 }}
+                      className="flex items-center gap-5"
+                    >
+                      <div className={cn(
+                        "h-12 w-12 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                        processingStep === 5 ? "border-green-600 bg-green-50" : 
+                        processingStep === 6 ? "border-red-600 bg-red-50" :
+                        processingStep === 4 ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                      )}>
+                        {processingStep === 5 ? (
+                          <CheckCircle2 className="h-7 w-7 text-green-600" />
+                        ) : processingStep === 6 ? (
+                          <XCircle className="h-7 w-7 text-red-600" />
+                        ) : processingStep === 4 ? (
+                          <Loader2 className="h-7 w-7 text-blue-600 animate-spin" />
+                        ) : (
+                          <div className="h-3 w-3 rounded-full bg-slate-200" />
+                        )}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={cn(
+                          "text-xl font-black transition-all duration-500",
+                          processingStep >= 4 ? "text-slate-900" : "text-slate-300"
+                        )}>
+                          {processingStep === 5 ? "Recharge Successful" : 
+                           processingStep === 6 ? "Recharge Failed" : 
+                           "Recharge Processing..."}
+                        </span>
+                      </div>
+                    </motion.div>
+                  </div>
+
+                  <div className="pt-6">
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                      <motion.div 
+                        initial={{ width: "0%" }}
+                        animate={{ width: `${Math.min((processingStep / 5) * 100, 100)}%` }}
+                        className={cn(
+                          "h-full transition-all duration-500",
+                          processingStep === 6 ? "bg-red-500" : "bg-blue-600"
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {(processingStep === 3 || processingStep === 4) && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="pt-12"
+                      >
+                        <Button 
+                          className="w-full h-16 bg-blue-700 hover:bg-blue-800 text-white text-2xl font-black rounded-3xl shadow-2xl flex items-center justify-center gap-4 border-4 border-blue-100/30"
+                          onClick={() => continueRecharge(true)}
+                        >
+                          <CheckCircle2 className="h-8 w-8" />
+                          OK
+                        </Button>
+                        <p className="text-center text-slate-400 text-sm mt-6 font-bold uppercase tracking-widest">Tap OK to Complete</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -821,19 +964,52 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="text-xs font-bold text-slate-500 uppercase ml-1">Enter 4-digit MPIN</label>
-                <Input 
-                  type="password" 
-                  placeholder="● ● ● ●" 
-                  className="text-center text-4xl h-20 tracking-[0.5em] font-black border-2 border-slate-100 focus:border-blue-700 rounded-2xl bg-slate-50" 
-                  maxLength={4}
-                  value={formData.mpin}
-                  onChange={(e) => setFormData({...formData, mpin: e.target.value})}
-                  inputMode="numeric"
-                  autoFocus
-                />
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase">Wallet Balance</p>
+                  <p className="text-xl font-black text-slate-900">₹{profile?.wallet_balance?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div className="text-right space-y-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase">Recharge Amount</p>
+                  <p className="text-xl font-black text-blue-700">₹{parseFloat(formData.amount).toFixed(2)}</p>
+                </div>
               </div>
+
+              {parseFloat(formData.amount) > (profile?.wallet_balance || 0) ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3">
+                    <XCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-red-900">Insufficient Balance</p>
+                      <p className="text-xs text-red-700">You need ₹{(parseFloat(formData.amount) - (profile?.wallet_balance || 0)).toFixed(2)} more to complete this recharge.</p>
+                    </div>
+                  </div>
+                  <Button 
+                    className="w-full bg-green-600 hover:bg-green-700 text-white h-12 rounded-xl font-bold flex items-center gap-2"
+                    onClick={() => {
+                      setAddBalanceAmount((parseFloat(formData.amount) - (profile?.wallet_balance || 0)).toFixed(2));
+                      setShowAddBalance(true);
+                    }}
+                  >
+                    <PlusCircle className="h-5 w-5" />
+                    Add Money Online
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-slate-500 uppercase ml-1">Enter 4-digit MPIN</label>
+                  <Input 
+                    type="password" 
+                    placeholder="● ● ● ●" 
+                    className="text-center text-4xl h-20 tracking-[0.5em] font-black border-2 border-slate-100 focus:border-blue-700 rounded-2xl bg-slate-50" 
+                    maxLength={4}
+                    value={formData.mpin}
+                    onChange={(e) => setFormData({...formData, mpin: e.target.value})}
+                    inputMode="numeric"
+                    autoFocus
+                  />
+                </div>
+              )}
 
               <div className="flex gap-4 pt-4">
                 <Button 
@@ -843,12 +1019,14 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 >
                   Cancel
                 </Button>
-                <Button 
-                  className="flex-1 h-14 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-2xl shadow-lg shadow-blue-200"
-                  onClick={handleRecharge}
-                >
-                  Confirm
-                </Button>
+                {parseFloat(formData.amount) <= (profile?.wallet_balance || 0) && (
+                  <Button 
+                    className="flex-1 h-14 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-2xl shadow-lg shadow-blue-200"
+                    onClick={handleRecharge}
+                  >
+                    Confirm
+                  </Button>
+                )}
               </div>
             </div>
           </motion.div>
@@ -919,6 +1097,12 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
           </Tabs>
         </DialogContent>
       </Dialog>
+      {/* Add Balance Modal */}
+      <AddBalanceModal 
+        open={showAddBalance} 
+        onClose={() => setShowAddBalance(false)} 
+        initialAmount={addBalanceAmount}
+      />
     </div>
   );
 }

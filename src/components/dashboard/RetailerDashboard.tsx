@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { Home, History, HelpCircle, Menu, LayoutGrid, Gift, Bell, Info, X, ShieldCheck } from 'lucide-react';
+import { Home, History, HelpCircle, Menu, LayoutGrid, Gift, Bell, Info, X, ShieldCheck, Percent, Loader2, Users } from 'lucide-react';
 import { HomeView } from './HomeView';
 import { RechargeView } from '../recharge/RechargeView';
 import { ReportsView } from '../reports/ReportsView';
 import { ProfileView } from './ProfileView';
 import { KycView } from './KycView';
 import { MPINModal } from './MPINModal';
+import { CommissionStructure } from '../reports/CommissionStructure';
 import { Button } from '../ui/button';
-import { cn } from '../../lib/utils';
+import { cn, formatTimeAgo } from '../../lib/utils';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../ui/sheet';
 import { ScrollArea } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
+import { supabase } from '../../lib/supabase';
 
 interface RetailerDashboardProps {
   onToggleAdminMode?: () => void;
@@ -21,19 +23,89 @@ interface RetailerDashboardProps {
 
 export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }: RetailerDashboardProps) {
   const { profile } = useAuthContext();
-  const [activeTab, setActiveTab] = useState<'home' | 'services' | 'reports' | 'help' | 'refer' | 'kyc'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'services' | 'reports' | 'help' | 'refer' | 'kyc' | 'commission'>('home');
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMPINSetup, setShowMPINSetup] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loadingNotifs, setLoadingNotifs] = useState(false);
+  const [readNotifs, setReadNotifs] = useState<string[]>(() => {
+    const saved = localStorage.getItem('read_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
 
-  // Mock notifications for now
-  const notifications = [
-    { id: 1, title: 'System Update', message: 'New recharge operators added to the system.', time: '2 hours ago', unread: true },
-    { id: 2, title: 'Wallet Credit', message: 'Your wallet has been credited with ₹500 by admin.', time: '5 hours ago', unread: false },
-    { id: 3, title: 'Welcome', message: 'Welcome to the new Retailer Dashboard!', time: '1 day ago', unread: false },
-  ];
+  useEffect(() => {
+    if (profile?.id) {
+      fetchNotifications();
+      
+      // Real-time listener for new notifications
+      const channel = supabase
+        .channel('new-notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications'
+          },
+          (payload) => {
+            if (payload.new.type === 'broadcast' || payload.new.user_id === profile.id) {
+              setNotifications(prev => [payload.new, ...prev]);
+              toast.info('New Notification', {
+                description: payload.new.title,
+                action: {
+                  label: 'View',
+                  onClick: () => setShowNotifications(true)
+                }
+              });
+            }
+          }
+        )
+        .subscribe();
 
-  const unreadCount = notifications.filter(n => n.unread).length;
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [profile?.id]);
+
+  const fetchNotifications = async () => {
+    if (!profile?.id) return;
+    setLoadingNotifs(true);
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .or(`user_id.eq.${profile.id},type.eq.broadcast`)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setNotifications(data || []);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoadingNotifs(false);
+    }
+  };
+
+  const markAsRead = (id: string) => {
+    if (!readNotifs.includes(id)) {
+      const newRead = [...readNotifs, id];
+      setReadNotifs(newRead);
+      localStorage.setItem('read_notifications', JSON.stringify(newRead));
+    }
+  };
+
+  const markAllAsRead = () => {
+    const allIds = notifications.map(n => n.id);
+    const newRead = [...new Set([...readNotifs, ...allIds])];
+    setReadNotifs(newRead);
+    localStorage.setItem('read_notifications', JSON.stringify(newRead));
+    toast.success('All marked as read');
+  };
+
+  const unreadCount = notifications.filter(n => !readNotifs.includes(n.id)).length;
 
   // Check if MPIN is set or needs reset setup
   const needsMPINSetup = profile && (!profile.mpin || profile.mpin.startsWith('TEMP:'));
@@ -41,7 +113,12 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <HomeView onServiceSelect={() => setActiveTab('services')} />;
+        return (
+          <HomeView 
+            onServiceSelect={() => setActiveTab('services')} 
+            onViewCommission={() => setActiveTab('commission')}
+          />
+        );
       case 'services':
         return <RechargeView onBack={() => setActiveTab('home')} />;
       case 'reports':
@@ -52,6 +129,8 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
         return <div className="p-4">Refer & Earn (Coming Soon)</div>;
       case 'kyc':
         return <KycView onBack={() => setActiveTab('home')} />;
+      case 'commission':
+        return <div className="p-4"><CommissionStructure forcedRole="retailer" /></div>;
       default:
         return <HomeView onServiceSelect={() => setActiveTab('services')} />;
     }
@@ -101,6 +180,12 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
               label="Reports" 
               active={activeTab === 'reports'} 
               onClick={() => setActiveTab('reports')} 
+            />
+            <SidebarNavButton 
+              icon={<Percent className="h-5 w-5" />} 
+              label="Commission Structure" 
+              active={activeTab === 'commission'} 
+              onClick={() => setActiveTab('commission')} 
             />
             <SidebarNavButton 
               icon={<ShieldCheck className="h-5 w-5" />} 
@@ -281,47 +366,58 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
           
           <ScrollArea className="flex-1">
             <div className="p-4 space-y-4">
-              {notifications.length === 0 ? (
+              {loadingNotifs ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                  <p className="text-sm text-slate-500">Loading notifications...</p>
+                </div>
+              ) : notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                   <Bell className="h-12 w-12 mb-2 opacity-20" />
                   <p>No notifications yet</p>
                 </div>
               ) : (
-                notifications.map((notif) => (
-                  <div 
-                    key={notif.id} 
-                    className={cn(
-                      "relative rounded-xl p-4 border transition-all",
-                      notif.unread ? "bg-blue-50/50 border-blue-100" : "bg-white border-slate-100"
-                    )}
-                  >
-                    {notif.unread && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl" />
-                    )}
-                    <div className="flex gap-3">
-                      <div className={cn(
-                        "h-8 w-8 rounded-full flex items-center justify-center shrink-0",
-                        notif.unread ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
-                      )}>
-                        <Info className="h-4 w-4" />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-bold text-slate-800">{notif.title}</p>
-                          <span className="text-[10px] text-slate-400">{notif.time}</span>
+                notifications.map((notif) => {
+                  const isUnread = !readNotifs.includes(notif.id);
+                  return (
+                    <div 
+                      key={notif.id} 
+                      className={cn(
+                        "relative rounded-xl p-4 border transition-all cursor-pointer",
+                        isUnread ? "bg-blue-50/50 border-blue-100 shadow-sm" : "bg-white border-slate-100"
+                      )}
+                      onClick={() => markAsRead(notif.id)}
+                    >
+                      {isUnread && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl" />
+                      )}
+                      <div className="flex gap-3">
+                        <div className={cn(
+                          "h-8 w-8 rounded-full flex items-center justify-center shrink-0",
+                          isUnread ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+                        )}>
+                          {notif.type === 'broadcast' ? <Users className="h-4 w-4" /> : <Info className="h-4 w-4" />}
                         </div>
-                        <p className="text-xs text-slate-600 leading-relaxed">{notif.message}</p>
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-bold text-slate-800">{notif.title}</p>
+                            <span className="text-[10px] text-slate-400 whitespace-nowrap ml-2">
+                              {formatTimeAgo(notif.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed">{notif.message}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </ScrollArea>
           
           {notifications.length > 0 && (
             <div className="p-4 border-t bg-slate-50">
-              <Button variant="outline" className="w-full text-xs h-9" onClick={() => toast.info('All marked as read')}>
+              <Button variant="outline" className="w-full text-xs h-9" onClick={markAllAsRead}>
                 Mark all as read
               </Button>
             </div>

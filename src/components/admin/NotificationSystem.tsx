@@ -4,29 +4,74 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { Bell, Send, Users, User, Info } from 'lucide-react';
+import { Bell, Send, Users, User, Info, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { toast } from 'sonner';
+import { supabase } from '../../lib/supabase';
 
 export function NotificationSystem() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [targetMobile, setTargetMobile] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSend = (type: 'all' | 'specific') => {
+  const handleSend = async (type: 'all' | 'specific') => {
     if (!title || !message) {
       toast.error('Please fill all fields');
       return;
     }
-    if (type === 'specific' && !targetMobile) {
-      toast.error('Please enter target mobile');
-      return;
+
+    setLoading(true);
+    try {
+      let userId = null;
+
+      if (type === 'specific') {
+        if (!targetMobile) {
+          toast.error('Please enter target mobile');
+          setLoading(false);
+          return;
+        }
+
+        // Find user by mobile
+        const { data: userData, error: userError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('mobile', targetMobile)
+          .maybeSingle();
+
+        if (userError) throw userError;
+        if (!userData) {
+          toast.error('User not found with this mobile number');
+          setLoading(false);
+          return;
+        }
+        userId = userData.id;
+      }
+
+      const { error } = await supabase
+        .from('notifications')
+        .insert([
+          {
+            user_id: userId,
+            title,
+            message,
+            type: type === 'all' ? 'broadcast' : 'personal',
+            created_at: new Date().toISOString()
+          }
+        ]);
+
+      if (error) throw error;
+
+      toast.success(`Notification sent to ${type === 'all' ? 'all users' : targetMobile}`);
+      setTitle('');
+      setMessage('');
+      setTargetMobile('');
+    } catch (error: any) {
+      console.error('Error sending notification:', error);
+      toast.error('Failed to send notification: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-    
-    toast.success(`Notification sent to ${type === 'all' ? 'all users' : targetMobile}`);
-    setTitle('');
-    setMessage('');
-    setTargetMobile('');
   };
 
   return (
@@ -82,13 +127,15 @@ export function NotificationSystem() {
 
             <div className="flex gap-4 pt-2">
               <TabsContent value="broadcast" className="mt-0 w-full">
-                <Button className="w-full gap-2" onClick={() => handleSend('all')}>
-                  <Send size={16} /> Send Broadcast
+                <Button className="w-full gap-2" onClick={() => handleSend('all')} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />} 
+                  {loading ? 'Sending...' : 'Send Broadcast'}
                 </Button>
               </TabsContent>
               <TabsContent value="specific" className="mt-0 w-full">
-                <Button className="w-full gap-2" onClick={() => handleSend('specific')}>
-                  <Send size={16} /> Send to User
+                <Button className="w-full gap-2" onClick={() => handleSend('specific')} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send size={16} />} 
+                  {loading ? 'Sending...' : 'Send to User'}
                 </Button>
               </TabsContent>
             </div>

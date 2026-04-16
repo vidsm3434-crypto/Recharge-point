@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { Smartphone, Tv, Zap, Car, CreditCard, Plus, ArrowRight, Gift, Info, ShieldCheck, Sparkles } from 'lucide-react';
+import { Smartphone, Tv, Zap, Car, CreditCard, Plus, ArrowRight, Gift, Info, ShieldCheck, Sparkles, Percent } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AddBalanceModal } from './AddBalanceModal';
 import { supabase } from '../../lib/supabase';
@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 
-export function HomeView({ onServiceSelect }: { onServiceSelect: () => void }) {
+export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelect: () => void, onViewCommission?: () => void }) {
   const { profile, fetchProfile } = useAuthContext();
   const [showAddBalance, setShowAddBalance] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
@@ -246,15 +246,28 @@ export function HomeView({ onServiceSelect }: { onServiceSelect: () => void }) {
       </div>
 
       {/* Promotions / Banners */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="border-none bg-indigo-600 text-white shadow-lg overflow-hidden relative group">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="border-none bg-indigo-600 text-white shadow-lg overflow-hidden relative group cursor-pointer" onClick={onViewCommission}>
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+            <Percent className="h-24 w-24" />
+          </div>
+          <CardContent className="flex items-center justify-between p-6 relative z-10">
+            <div className="space-y-2">
+              <h4 className="text-xl font-bold">Commission Structure</h4>
+              <p className="text-sm opacity-80 max-w-[200px]">Check your earnings for each operator</p>
+              <Button size="sm" variant="secondary" className="mt-2 rounded-full">View Details</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none bg-purple-600 text-white shadow-lg overflow-hidden relative group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
             <Gift className="h-24 w-24" />
           </div>
           <CardContent className="flex items-center justify-between p-6 relative z-10">
             <div className="space-y-2">
               <h4 className="text-xl font-bold">Refer & Earn ₹50</h4>
-              <p className="text-sm opacity-80 max-w-[200px]">Invite your friends to join RechargePoint and earn rewards</p>
+              <p className="text-sm opacity-80 max-w-[200px]">Invite your friends and earn rewards</p>
               <Button size="sm" variant="secondary" className="mt-2 rounded-full">Invite Now</Button>
             </div>
           </CardContent>
@@ -267,7 +280,7 @@ export function HomeView({ onServiceSelect }: { onServiceSelect: () => void }) {
                 <Info className="h-5 w-5" />
                 <h4 className="font-bold">Security Tip</h4>
               </div>
-              <p className="text-sm text-amber-700">Never share your MPIN or OTP with anyone, even if they claim to be from RechargePoint.</p>
+              <p className="text-sm text-amber-700">Never share your MPIN or OTP with anyone.</p>
             </div>
           </CardContent>
         </Card>

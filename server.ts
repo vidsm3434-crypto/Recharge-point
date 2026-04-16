@@ -558,6 +558,39 @@ const OPERATOR_MAPPING: Record<string, string> = {
     }
   });
 
+  // Public endpoint to get config (bypasses RLS for specific keys)
+  app.get("/api/config/:key", async (req, res) => {
+    const { key } = req.params;
+    
+    // Only allow specific keys to be read publicly
+    const allowedKeys = ['recharge_plans', 'global'];
+    if (!allowedKeys.includes(key)) {
+      return res.status(403).json({ error: "Access denied to this config key" });
+    }
+
+    try {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!serviceRoleKey) {
+        throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+      }
+
+      const adminSupabase = createClient(supabaseUrl, serviceRoleKey);
+      
+      const { data, error } = await adminSupabase
+        .from('config')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      res.json({ success: true, data: data?.value || null });
+    } catch (error: any) {
+      console.error("Config Fetch Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/admin/transfer-balance", async (req, res) => {
     const { fromUserId, toUserId, amount, remark, type } = req.body;
     

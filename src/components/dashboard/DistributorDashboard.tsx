@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { cn } from '../../lib/utils';
 import { ReportsView } from '../reports/ReportsView';
+import { CommissionStructure } from '../reports/CommissionStructure';
 
 export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDistributorMode?: () => void }) {
   const { profile, fetchProfile } = useAuthContext();
@@ -563,7 +564,7 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
                     <NavButton 
                       active={activeTab === 'commission'} 
                       icon={<Percent />} 
-                      label="Commission" 
+                      label="Commission Structure" 
                       onClick={() => { setActiveTab('commission'); setSidebarOpen(false); }} 
                     />
                     <NavButton 
@@ -890,33 +891,41 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
 
         {activeTab === 'reports' && (
           <div className="h-[calc(100vh-80px)] -mx-4 -mt-4 md:mx-0 md:mt-0">
-            <ReportsView />
+            <ReportsView mode="management" />
           </div>
         )}
 
         {activeTab === 'commission' && (
-          <div className="space-y-4">
-            <h3 className="font-bold text-slate-800">Commission Earnings</h3>
+          <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <Card className="border-none bg-indigo-600 text-white">
                 <CardContent className="p-4">
-                  <p className="text-[10px] opacity-80">Today's Commission</p>
-                  <p className="text-xl font-bold">₹{stats.todayCommission.toFixed(2)}</p>
+                  <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Today's Earnings</p>
+                  <p className="text-xl font-black">₹{stats.todayCommission.toFixed(2)}</p>
                 </CardContent>
               </Card>
-              <Card className="border-none bg-white">
+              <Card className="border-none bg-white shadow-sm">
                 <CardContent className="p-4">
-                  <p className="text-[10px] text-slate-500">Total Commission</p>
-                  <p className="text-xl font-bold text-indigo-600">₹{transactions.filter(t => t.type === 'commission').reduce((sum, t) => sum + (t.amount || 0), 0).toFixed(2)}</p>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total Earnings</p>
+                  <p className="text-xl font-black text-indigo-600">₹{transactions.filter(t => t.type === 'commission').reduce((sum, t) => sum + (t.amount || 0), 0).toFixed(2)}</p>
                 </CardContent>
               </Card>
             </div>
+
+            <CommissionStructure forcedRole="distributor" />
+
             <div className="space-y-3">
-              {transactions.filter(t => t.type === 'commission').map(txn => (
+              <h4 className="font-bold text-slate-800 text-sm">Recent Commission History</h4>
+              {transactions.filter(t => t.type === 'commission').slice(0, 10).map(txn => (
                 <div key={txn.id}>
                   <TransactionItem txn={txn} currentUserId={profile?.id || ''} />
                 </div>
               ))}
+              {transactions.filter(t => t.type === 'commission').length === 0 && (
+                <p className="text-center py-10 text-slate-400 italic bg-white rounded-xl border border-dashed">
+                  No commission history found.
+                </p>
+              )}
             </div>
           </div>
         )}

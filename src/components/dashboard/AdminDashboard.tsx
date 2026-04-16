@@ -26,7 +26,8 @@ import {
   History,
   Plus,
   Minus,
-  Landmark
+  Landmark,
+  TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
@@ -35,7 +36,6 @@ import { cn } from '../../lib/utils';
 import { DashboardStats } from '../admin/DashboardStats';
 import { UserManagement } from '../admin/UserManagement';
 import { TransactionManagement } from '../admin/TransactionManagement';
-import { CommissionManagement } from '../admin/CommissionManagement';
 import { WalletManagement } from '../admin/WalletManagement';
 import { ApiSettings } from '../admin/ApiSettings';
 import { SecuritySettings } from '../admin/SecuritySettings';
@@ -45,6 +45,7 @@ import { ReportsSystem } from '../admin/ReportsSystem';
 import { MPINRequests } from '../admin/MPINRequests';
 import { WalletRequests } from '../admin/WalletRequests';
 import { PlansManagement } from '../admin/PlansManagement';
+import { CommissionStructure } from '../reports/CommissionStructure';
 
 interface AdminDashboardProps {
   onBackToRetailer?: () => void;
@@ -55,7 +56,6 @@ type AdminSection =
   | 'users' 
   | 'transactions' 
   | 'reports' 
-  | 'commission' 
   | 'wallet' 
   | 'api' 
   | 'security' 
@@ -63,7 +63,9 @@ type AdminSection =
   | 'notifications'
   | 'mpin_requests'
   | 'wallet_requests'
-  | 'plans';
+  | 'admin_profit'
+  | 'plans'
+  | 'commission_structure';
 
 export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
   const { fetchProfile } = useAuthContext();
@@ -88,6 +90,11 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
   const [pendingMpinRequests, setPendingMpinRequests] = useState(0);
   const [pendingWalletRequests, setPendingWalletRequests] = useState(0);
   const [showAddUser, setShowAddUser] = useState(false);
+  const [walletAction, setWalletAction] = useState({
+    amount: '',
+    type: 'credit' as 'credit' | 'debit',
+    remark: ''
+  });
   const [newUser, setNewUser] = useState({
     name: '',
     mobile: '',
@@ -461,8 +468,6 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
         return <TransactionManagement transactions={transactions} users={users} />;
       case 'reports':
         return <ReportsSystem transactions={transactions} />;
-      case 'commission':
-        return <CommissionManagement config={config} onUpdateConfig={handleUpdateConfig} />;
       case 'wallet':
         return <WalletManagement users={users} onUpdateWallet={handleUpdateWallet} />;
       case 'api':
@@ -473,12 +478,16 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
         return <KycManagement users={users} onUpdateUser={handleUpdateUser} />;
       case 'notifications':
         return <NotificationSystem />;
+      case 'admin_profit':
+        return <ReportsSystem transactions={transactions} initialView="admin_profit" />;
       case 'mpin_requests':
         return <MPINRequests />;
       case 'wallet_requests':
         return <WalletRequests />;
       case 'plans':
         return <PlansManagement />;
+      case 'commission_structure':
+        return <CommissionStructure config={config} forcedRole="admin" onUpdateConfig={handleUpdateConfig} />;
       default: 
         return <DashboardStats users={users} transactions={transactions} />;
     }
@@ -490,7 +499,8 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
     { id: 'plans', label: 'Recharge Plans', icon: <Smartphone className="h-5 w-5" /> },
     { id: 'transactions', label: 'Transactions', icon: <Smartphone className="h-5 w-5" /> },
     { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" /> },
-    { id: 'commission', label: 'Commission', icon: <Percent className="h-5 w-5" /> },
+    { id: 'admin_profit', label: 'Admin Profit', icon: <TrendingUp className="h-5 w-5" /> },
+    { id: 'commission_structure', label: 'Commission Management', icon: <Percent className="h-5 w-5" /> },
     { id: 'wallet', label: 'Wallet', icon: <Wallet className="h-5 w-5" /> },
     { id: 'api', label: 'API Settings', icon: <Settings className="h-5 w-5" /> },
     { id: 'security', label: 'Security', icon: <ShieldCheck className="h-5 w-5" /> },
@@ -679,7 +689,69 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
 
       {/* Wallet Update Dialog (Quick Action) */}
       <Dialog open={!!selectedUser} onOpenChange={() => setSelectedUser(null)}>
-        {/* ... existing wallet dialog content ... */}
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black tracking-tight">Update Wallet Balance</DialogTitle>
+            <p className="text-sm text-slate-500">
+              Update wallet for {selectedUser?.name} ({selectedUser?.mobile})
+            </p>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <p className="text-xs text-slate-500 uppercase font-bold">Current Balance</p>
+              <p className="text-2xl font-black text-primary">₹{selectedUser?.wallet_balance?.toFixed(2) || '0.00'}</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Action</Label>
+                <select 
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={walletAction.type}
+                  onChange={(e) => setWalletAction({...walletAction, type: e.target.value as any})}
+                >
+                  <option value="credit">Credit (Add)</option>
+                  <option value="debit">Debit (Deduct)</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input 
+                  type="number" 
+                  placeholder="0.00"
+                  value={walletAction.amount}
+                  onChange={(e) => setWalletAction({...walletAction, amount: e.target.value})}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Remark / Note</Label>
+              <Input 
+                placeholder="Reason for update" 
+                value={walletAction.remark}
+                onChange={(e) => setWalletAction({...walletAction, remark: e.target.value})}
+              />
+            </div>
+            
+            <Button 
+              className="w-full h-12 rounded-xl font-bold" 
+              onClick={() => {
+                handleUpdateWallet(
+                  selectedUser.id, 
+                  parseFloat(walletAction.amount), 
+                  walletAction.type, 
+                  walletAction.remark
+                );
+                setSelectedUser(null);
+                setWalletAction({ amount: '', type: 'credit', remark: '' });
+              }}
+              disabled={!walletAction.amount || parseFloat(walletAction.amount) <= 0}
+            >
+              Update Wallet
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Add User Dialog */}

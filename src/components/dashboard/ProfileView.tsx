@@ -157,7 +157,10 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
         }
         break;
       case 'commission':
-        toast.info('Commission Structure: Retailer 2.5%, Distributor 0.5%');
+        if (onMenuClick) {
+          onMenuClick('commission');
+          onClose();
+        }
         break;
       case 'mpin':
         setMpinMode('change');
