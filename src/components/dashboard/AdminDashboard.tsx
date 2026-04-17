@@ -27,7 +27,8 @@ import {
   Plus,
   Minus,
   Landmark,
-  TrendingUp
+  TrendingUp,
+  Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
@@ -45,6 +46,7 @@ import { ReportsSystem } from '../admin/ReportsSystem';
 import { MPINRequests } from '../admin/MPINRequests';
 import { WalletRequests } from '../admin/WalletRequests';
 import { PlansManagement } from '../admin/PlansManagement';
+import { LogoManagement } from '../admin/LogoManagement';
 import { CommissionStructure } from '../reports/CommissionStructure';
 
 interface AdminDashboardProps {
@@ -65,7 +67,8 @@ type AdminSection =
   | 'wallet_requests'
   | 'admin_profit'
   | 'plans'
-  | 'commission_structure';
+  | 'commission_structure'
+  | 'logos';
 
 export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
   const { fetchProfile } = useAuthContext();
@@ -486,6 +489,8 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
         return <WalletRequests />;
       case 'plans':
         return <PlansManagement />;
+      case 'logos':
+        return <LogoManagement />;
       case 'commission_structure':
         return <CommissionStructure config={config} forcedRole="admin" onUpdateConfig={handleUpdateConfig} />;
       default: 
@@ -501,6 +506,7 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
     { id: 'reports', label: 'Reports', icon: <FileText className="h-5 w-5" /> },
     { id: 'admin_profit', label: 'Admin Profit', icon: <TrendingUp className="h-5 w-5" /> },
     { id: 'commission_structure', label: 'Commission Management', icon: <Percent className="h-5 w-5" /> },
+    { id: 'logos', label: 'Operator Logos', icon: <ImageIcon className="h-5 w-5" /> },
     { id: 'wallet', label: 'Wallet', icon: <Wallet className="h-5 w-5" /> },
     { id: 'api', label: 'API Settings', icon: <Settings className="h-5 w-5" /> },
     { id: 'security', label: 'Security', icon: <ShieldCheck className="h-5 w-5" /> },

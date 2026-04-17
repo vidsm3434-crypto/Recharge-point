@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
+import { fetchOperatorLogos, getOperatorLogo } from '../../lib/operators';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ScrollArea } from '../ui/scroll-area';
@@ -60,6 +61,16 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
   const [plans, setPlans] = useState<any[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [isContinuing, setIsContinuing] = useState(false);
+  const [operatorLogos, setOperatorLogos] = useState<any>(null);
+
+  React.useEffect(() => {
+    fetchOperatorLogos().then(setOperatorLogos);
+  }, []);
+
+  const dynamicOperators = operators.map(op => ({
+    ...op,
+    logo: getOperatorLogo(op.name, operatorLogos)
+  }));
 
   // Auto-detect operator
   React.useEffect(() => {
@@ -251,6 +262,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       let retailerCommAmount = 0;
       let distributorCommAmount = 0;
       let adminProfitAmount = 0;
+      let apiCommRate = 0;
 
       if (status === 'success') {
         try {
@@ -281,7 +293,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
             distributor: operatorOverride?.distributor ?? opDefaults[operatorName]?.distributor ?? defaultRates.distributor ?? 0.7
           };
           
-          const apiCommRate = (rates.api || 0) / 100;
+          apiCommRate = (rates.api || 0) / 100;
           const retailerCommRate = (rates.retailer || 0) / 100;
           const distributorCommRate = (rates.distributor || 0) / 100;
           
@@ -533,7 +545,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase ml-1">Select Operator</label>
                   <div className="grid grid-cols-4 gap-3">
-                    {operators.map((op) => (
+                    {dynamicOperators.map((op) => (
                       <motion.button
                         key={op.id}
                         whileHover={{ scale: 1.05 }}

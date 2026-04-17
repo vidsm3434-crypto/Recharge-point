@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Plus, Trash2, Edit2, Save, X, Smartphone } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Smartphone, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 import React from 'react';

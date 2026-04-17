@@ -565,7 +565,7 @@ const OPERATOR_MAPPING: Record<string, string> = {
     const { key } = req.params;
     
     // Only allow specific keys to be read publicly
-    const allowedKeys = ['recharge_plans', 'global'];
+    const allowedKeys = ['recharge_plans', 'global', 'operator_logos'];
     if (!allowedKeys.includes(key)) {
       return res.status(403).json({ error: "Access denied to this config key" });
     }

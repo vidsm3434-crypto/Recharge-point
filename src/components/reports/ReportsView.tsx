@@ -27,6 +27,7 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { cn, exportToCSV } from '../../lib/utils';
 import { toast } from 'sonner';
+import { fetchOperatorLogos, getOperatorLogo as getGlobalOperatorLogo } from '../../lib/operators';
 import { TransactionDetailModal } from './TransactionDetailModal';
 
 type ReportType = 
@@ -53,6 +54,11 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [complaintModalOpen, setComplaintModalOpen] = useState(false);
+  const [operatorLogos, setOperatorLogos] = useState<any>(null);
+
+  useEffect(() => {
+    fetchOperatorLogos().then(setOperatorLogos);
+  }, []);
   const [complaintTxn, setComplaintTxn] = useState<any>(null);
   const [complaintData, setComplaintData] = useState({ type: 'Wrong Recharge', description: '' });
 
@@ -387,12 +393,7 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
   };
 
   const getOperatorLogo = (operator: string) => {
-    const op = operator?.toLowerCase() || '';
-    if (op.includes('airtel')) return 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png';
-    if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg';
-    if (op.includes('jio')) return 'https://img.sanishtech.com/u/e53166a350f4b2ff2add92dab3fb8471.png';
-    if (op.includes('bsnl')) return 'https://img.sanishtech.com/u/5500e251803fa7db0bb8ab9d037a72a9.webp';
-    return `https://picsum.photos/seed/${op}/100/100`;
+    return getGlobalOperatorLogo(operator, operatorLogos);
   };
 
   const renderMenu = () => (
