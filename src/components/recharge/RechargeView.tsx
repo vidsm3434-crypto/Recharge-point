@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
 import { fetchOperatorLogos, getOperatorLogo } from '../../lib/operators';
+import { detectOperatorAndCircle, detectOperatorByPrefix } from '../../services/operatorService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ScrollArea } from '../ui/scroll-area';
@@ -62,6 +63,7 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [isContinuing, setIsContinuing] = useState(false);
   const [operatorLogos, setOperatorLogos] = useState<any>(null);
+  const [detecting, setDetecting] = useState(false);
 
   React.useEffect(() => {
     fetchOperatorLogos().then(setOperatorLogos);
@@ -72,19 +74,36 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
     logo: getOperatorLogo(op.name, operatorLogos)
   }));
 
-  // Auto-detect operator
+  // Auto-detect operator & circle
   React.useEffect(() => {
-    if (formData.mobile.length >= 4) {
-      const prefix = formData.mobile.substring(0, 3);
-      // Basic detection logic (can be expanded)
-      if (['600', '700', '800', '900'].includes(prefix)) {
-        if (!formData.operator) setFormData(prev => ({ ...prev, operator: 'Jio' }));
-      } else if (['984', '994', '974', '964', '954', '944', '914', '814', '804', '704'].includes(prefix)) {
-        if (!formData.operator) setFormData(prev => ({ ...prev, operator: 'Airtel' }));
-      } else if (['989', '999', '979', '969', '959', '949', '919', '819', '809', '709'].includes(prefix)) {
-        if (!formData.operator) setFormData(prev => ({ ...prev, operator: 'Vi' }));
+    const detect = async () => {
+      // 1. Prefix logic (fast)
+      if (formData.mobile.length >= 4 && formData.mobile.length < 10) {
+        const detected = detectOperatorByPrefix(formData.mobile);
+        if (detected && !formData.operator) {
+          setFormData(prev => ({ ...prev, operator: detected.operator }));
+        }
       }
-    }
+
+      // 2. AI Lookup (When 10 digits entered)
+      if (formData.mobile.length === 10) {
+        setDetecting(true);
+        const result = await detectOperatorAndCircle(formData.mobile);
+        if (result) {
+          setFormData(prev => ({
+            ...prev,
+            operator: result.operator !== 'Unknown' ? result.operator : prev.operator,
+            state: result.circle !== 'Unknown' ? result.circle : prev.state
+          }));
+          if (result.operator !== 'Unknown') {
+            toast.success(`Detected: ${result.operator} (${result.circle})`);
+          }
+        }
+        setDetecting(false);
+      }
+    };
+
+    detect();
   }, [formData.mobile]);
 
   // Real-time status listener
@@ -438,6 +457,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
         apiTxId: apiData.apiTxId || apiData.txid || apiData.opid,
         mobile: formData.mobile,
         amount: amount,
+        commissionEarned: retailerCommAmount,
+        closingBalance: closingBalance,
         date: new Date().toLocaleString(),
         error: status === 'failed' ? 'Recharge Failed. Please try again later.' : null
       });
@@ -527,15 +548,16 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                 {/* Mobile Number Input */}
                 <Card className="border shadow-none rounded-xl">
                   <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex-1">
+                    <div className="flex-1 flex items-center gap-2">
                       <Input 
                         placeholder="Please Enter Mobile Number" 
                         className="border-none shadow-none p-0 h-auto text-base focus-visible:ring-0 placeholder:text-slate-500" 
                         value={formData.mobile}
-                        onChange={(e) => setFormData({...formData, mobile: e.target.value})}
+                        onChange={(e) => setFormData({...formData, mobile: e.target.value.replace(/\D/g, '')})}
                         maxLength={10}
                         inputMode="numeric"
                       />
+                      {detecting && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
                     </div>
                     <Contact2 className="h-6 w-6 text-blue-700" />
                   </CardContent>
@@ -869,16 +891,16 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                     transition={{ type: "spring", damping: 12 }}
                     className={cn(
                       "relative rounded-full p-10 border-4 border-white shadow-2xl",
-                      result.status === 'success' || result.status === 'pending' ? "bg-green-100" : 
-                      result.status === 'processing' ? "bg-blue-50" : "bg-red-100"
+                      result.status === 'success' || result.status === 'pending' ? "bg-secondary/10" : 
+                      result.status === 'processing' ? "bg-primary/5" : "bg-destructive/10"
                     )}
                   >
                     {result.status === 'success' || result.status === 'pending' ? (
-                      <CheckCircle2 className="h-24 w-24 text-green-600" />
+                      <CheckCircle2 className="h-24 w-24 text-secondary" />
                     ) : result.status === 'processing' ? (
-                      <Loader2 className="h-24 w-24 text-blue-600 animate-spin" />
+                      <Loader2 className="h-24 w-24 text-primary animate-spin" />
                     ) : (
-                      <XCircle className="h-24 w-24 text-red-600" />
+                      <XCircle className="h-24 w-24 text-destructive" />
                     )}
                   </motion.div>
                 </div>
@@ -921,6 +943,22 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
                       <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Date</span>
                       <span className="text-xs font-black text-slate-600">{result.date}</span>
                     </div>
+                    {result.status === 'success' && (
+                      <>
+                        <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                          <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Commission</span>
+                          <span className="font-black text-green-600">₹{result.commissionEarned?.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                          <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Net Bill</span>
+                          <span className="font-black text-slate-800">₹{(result.amount - (result.commissionEarned || 0)).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center pb-4 border-b border-slate-50">
+                          <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Closing Bal.</span>
+                          <span className="font-black text-blue-700">₹{result.closingBalance?.toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Txn ID</span>
                       <span className="font-mono text-xs font-black text-slate-600">{result.txnId}</span>

@@ -483,22 +483,22 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
                       <p className="text-2xl font-bold text-blue-700">{filteredData.length}</p>
                     </CardContent>
                   </Card>
-                  <Card className="border-none shadow-sm bg-indigo-50">
+                  <Card className="border-none shadow-sm bg-primary/5">
                     <CardContent className="p-4">
                       <p className="text-xs text-slate-500 font-medium">Total Amount</p>
-                      <p className="text-2xl font-bold text-indigo-700">₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-primary">₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</p>
                     </CardContent>
                   </Card>
-                  <Card className="border-none shadow-sm bg-green-50">
+                  <Card className="border-none shadow-sm bg-secondary/10">
                     <CardContent className="p-4">
                       <p className="text-xs text-slate-500 font-medium">Success Count</p>
-                      <p className="text-2xl font-bold text-green-700">{filteredData.filter(t => t.status === 'success').length}</p>
+                      <p className="text-2xl font-bold text-secondary">{filteredData.filter(t => t.status === 'success').length}</p>
                     </CardContent>
                   </Card>
-                  <Card className="border-none shadow-sm bg-red-50">
+                  <Card className="border-none shadow-sm bg-destructive/10">
                     <CardContent className="p-4">
                       <p className="text-xs text-slate-500 font-medium">Failed Count</p>
-                      <p className="text-2xl font-bold text-red-700">{filteredData.filter(t => t.status === 'failed').length}</p>
+                      <p className="text-2xl font-bold text-destructive">{filteredData.filter(t => t.status === 'failed').length}</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -527,7 +527,7 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
                         <p className="text-sm font-bold text-slate-900">Order Id :{txn.details?.txnId || txn.id.slice(0, 12).toUpperCase()}</p>
                         <p className={cn(
                           "text-sm font-bold",
-                          isDebit ? "text-red-600" : "text-green-600"
+                          isDebit ? "text-destructive" : "text-secondary"
                         )}>
                           {isDebit ? '-' : '+'}₹{txn.amount}
                         </p>

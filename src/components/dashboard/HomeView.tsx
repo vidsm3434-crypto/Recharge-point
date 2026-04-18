@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { Smartphone, Tv, Zap, Car, CreditCard, Plus, ArrowRight, Gift, Info, ShieldCheck, Sparkles, Percent } from 'lucide-react';
+import { Smartphone, Tv, Zap, Car, CreditCard, Plus, ArrowRight, Gift, Info, ShieldCheck, Sparkles, Percent, LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AddBalanceModal } from './AddBalanceModal';
+import { BannerSlider } from './BannerSlider';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 
@@ -15,6 +16,18 @@ export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelec
   const [showAddBalance, setShowAddBalance] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
+  const [banners, setBanners] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/config/global')
+      .then(res => res.json())
+      .then(result => {
+        if (result.success && result.data?.banners) {
+          setBanners(result.data.banners);
+        }
+      })
+      .catch(err => console.error('Error fetching banners:', err));
+  }, []);
 
   const handleUpgrade = async () => {
     if (!profile) return;
@@ -78,42 +91,36 @@ export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelec
   };
 
   const services = [
-    { id: 'mobile', icon: <Smartphone className="h-6 w-6" />, label: 'Mobile', color: 'bg-blue-500' },
-    { id: 'dth', icon: <Tv className="h-6 w-6" />, label: 'DTH', color: 'bg-red-500', comingSoon: true },
-    { id: 'electricity', icon: <Zap className="h-6 w-6" />, label: 'Electricity', color: 'bg-yellow-500', comingSoon: true },
-    { id: 'fastag', icon: <Car className="h-6 w-6" />, label: 'FASTag', color: 'bg-green-500', comingSoon: true },
-    { id: 'postpaid', icon: <CreditCard className="h-6 w-6" />, label: 'Postpaid', color: 'bg-purple-500', comingSoon: true },
+    { id: 'mobile', icon: <Smartphone className="h-6 w-6" />, label: 'Mobile', color: 'bg-primary' },
+    { id: 'dth', icon: <Tv className="h-6 w-6" />, label: 'DTH', color: 'bg-slate-400', comingSoon: true },
+    { id: 'electricity', icon: <Zap className="h-6 w-6" />, label: 'Electricity', color: 'bg-primary/60', comingSoon: true },
+    { id: 'fastag', icon: <Car className="h-6 w-6" />, label: 'FASTag', color: 'bg-secondary', comingSoon: true },
+    { id: 'postpaid', icon: <CreditCard className="h-6 w-6" />, label: 'Postpaid', color: 'bg-primary/40', comingSoon: true },
   ];
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
+    <div className="space-y-6 p-4 md:p-8">
+      {/* Banner Section */}
+      <BannerSlider banners={banners} />
+
       {/* Wallet Card & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 overflow-hidden border-none bg-gradient-to-br from-primary to-primary/80 text-white shadow-xl">
-          <CardContent className="p-8">
+          <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="space-y-1">
-                <p className="text-sm opacity-80 font-medium uppercase tracking-wider">Available Balance</p>
-                <h2 className="text-4xl md:text-5xl font-black">₹{profile?.wallet_balance?.toFixed(2) || '0.00'}</h2>
+              <div className="space-y-0.5">
+                <p className="text-[10px] opacity-70 font-black uppercase tracking-[0.2em]">Available Balance</p>
+                <h2 className="text-2xl md:text-3xl font-black">₹{profile?.wallet_balance?.toFixed(2) || '0.00'}</h2>
               </div>
               <div className="flex gap-3">
                 <Button 
                   variant="secondary" 
-                  size="lg" 
-                  className="gap-2 rounded-xl shadow-lg hover:shadow-primary/20 transition-all"
+                  size="sm" 
+                  className="gap-2 rounded-xl px-6 h-11 font-bold shadow-lg hover:shadow-primary/20 transition-all border-none"
                   onClick={() => setShowAddBalance(true)}
                 >
-                  <Plus className="h-5 w-5" />
+                  <Plus className="h-4 w-4" />
                   Add Money
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="lg" 
-                  className="gap-2 rounded-xl bg-white/10 border-white/20 text-white hover:bg-white/20"
-                  onClick={() => {}}
-                >
-                  <ArrowRight className="h-5 w-5" />
-                  Transfer
                 </Button>
               </div>
             </div>

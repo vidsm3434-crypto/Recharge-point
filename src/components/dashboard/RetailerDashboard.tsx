@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { Home, History, HelpCircle, Menu, LayoutGrid, Gift, Bell, Info, X, ShieldCheck, Percent, Loader2, Users } from 'lucide-react';
+import { Home, History, HelpCircle, Menu, LayoutGrid, Gift, Bell, Info, X, ShieldCheck, Percent, Loader2, Users, User } from 'lucide-react';
 import { HomeView } from './HomeView';
 import { RechargeView } from '../recharge/RechargeView';
 import { ReportsView } from '../reports/ReportsView';
 import { ProfileView } from './ProfileView';
 import { KycView } from './KycView';
+import { MyProfileView } from './MyProfileView';
 import { MPINModal } from './MPINModal';
 import { CommissionStructure } from '../reports/CommissionStructure';
 import { Button } from '../ui/button';
@@ -23,10 +24,22 @@ interface RetailerDashboardProps {
 
 export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }: RetailerDashboardProps) {
   const { profile } = useAuthContext();
-  const [activeTab, setActiveTab] = useState<'home' | 'services' | 'reports' | 'help' | 'refer' | 'kyc' | 'commission'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'services' | 'reports' | 'help' | 'refer' | 'kyc' | 'commission' | 'profile' | 'settings'>('home');
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMPINSetup, setShowMPINSetup] = useState(false);
+  const [showCommission, setShowCommission] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/config/global')
+      .then(res => res.json())
+      .then(result => {
+        if (result.data) {
+          setShowCommission(result.data.showRetailerCommission !== false);
+        }
+      })
+      .catch(err => console.error('Error fetching system config:', err));
+  }, []);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
   const [readNotifs, setReadNotifs] = useState<string[]>(() => {
@@ -130,14 +143,18 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
       case 'kyc':
         return <KycView onBack={() => setActiveTab('home')} />;
       case 'commission':
-        return <div className="p-4"><CommissionStructure forcedRole="retailer" /></div>;
+        return showCommission ? <div className="p-4"><CommissionStructure forcedRole="retailer" /></div> : <HomeView onServiceSelect={() => setActiveTab('services')} />;
+      case 'profile':
+        return <MyProfileView />;
+      case 'settings':
+        return <div className="p-4">Settings (Coming Soon)</div>;
       default:
         return <HomeView onServiceSelect={() => setActiveTab('services')} />;
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 flex-col border-r bg-white sticky top-0 h-screen">
         <div className="p-6 bg-primary text-white">
@@ -181,11 +198,19 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
               active={activeTab === 'reports'} 
               onClick={() => setActiveTab('reports')} 
             />
+            {showCommission && (
+              <SidebarNavButton 
+                icon={<Percent className="h-5 w-5" />} 
+                label="Commission Structure" 
+                active={activeTab === 'commission'} 
+                onClick={() => setActiveTab('commission')} 
+              />
+            )}
             <SidebarNavButton 
-              icon={<Percent className="h-5 w-5" />} 
-              label="Commission Structure" 
-              active={activeTab === 'commission'} 
-              onClick={() => setActiveTab('commission')} 
+              icon={<User className="h-5 w-5" />} 
+              label="My Profile" 
+              active={activeTab === 'profile'} 
+              onClick={() => setActiveTab('profile')} 
             />
             <SidebarNavButton 
               icon={<ShieldCheck className="h-5 w-5" />} 
@@ -329,10 +354,10 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
           onClick={() => setActiveTab('help')} 
         />
         <NavButton 
-          icon={<Gift className="h-5 w-5" />} 
-          label="Refer" 
-          active={activeTab === 'refer'} 
-          onClick={() => setActiveTab('refer')} 
+          icon={<User className="h-5 w-5" />} 
+          label="Profile" 
+          active={activeTab === 'profile'} 
+          onClick={() => setActiveTab('profile')} 
         />
       </nav>
 

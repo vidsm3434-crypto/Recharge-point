@@ -18,7 +18,15 @@ interface ProfileViewProps {
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 
-export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: ProfileViewProps) {
+export function ProfileContent({ 
+  onClose, 
+  onToggleAdminMode, 
+  onMenuClick 
+}: { 
+  onClose?: () => void;
+  onToggleAdminMode?: () => void;
+  onMenuClick?: (id: string) => void;
+}) {
   const { profile, fetchProfile } = useAuthContext();
   const [showMPINModal, setShowMPINModal] = useState(false);
   const [mpinMode, setMpinMode] = useState<'change' | 'reset-request'>('change');
@@ -38,8 +46,6 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
     if (!profile) return;
     setUpgrading(true);
     try {
-      console.log('Starting distributor upgrade from profile for user:', profile.id);
-      
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
@@ -48,12 +54,9 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
         })
         .eq('id', profile.id);
 
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
-      const { error: txnError } = await supabase.from('transactions').insert([{
+      await supabase.from('transactions').insert([{
         user_id: profile.id,
         type: 'wallet_add',
         amount: 500,
@@ -66,20 +69,11 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
         }
       }]);
 
-      if (txnError) {
-        console.error('Transaction insert error:', txnError);
-      }
-
       toast.success('Congratulations! You are now a Distributor.');
-      
       await fetchProfile(profile.id);
       setShowUpgradeConfirm(false);
-      
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error: any) {
-      console.error('Upgrade failed:', error);
       toast.error(`Upgrade failed: ${error.message || 'Unknown error'}`);
     } finally {
       setUpgrading(false);
@@ -103,7 +97,6 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
     });
   }
 
-  // Add Distributor Panel option if user is a distributor OR the specific admin
   if ((profile?.role === 'distributor' || profile?.mobile === '7872303434') && onMenuClick) {
     menuItems.unshift({ 
       id: 'distributor_panel',
@@ -113,7 +106,6 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
     });
   }
 
-  // Add Admin Panel option if user is the specific admin
   if (profile?.mobile === '7872303434' && onToggleAdminMode) {
     menuItems.unshift({ 
       id: 'admin',
@@ -128,13 +120,13 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
       case 'admin':
         if (onToggleAdminMode) {
           onToggleAdminMode();
-          onClose();
+          onClose?.();
         }
         break;
       case 'distributor_panel':
         if (onMenuClick) {
           onMenuClick('distributor_panel');
-          onClose();
+          onClose?.();
         }
         break;
       case 'upgrade':
@@ -148,19 +140,19 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
       case 'kyc':
         if (onMenuClick) {
           onMenuClick('kyc');
-          onClose();
+          onClose?.();
         }
         break;
       case 'history':
         if (onMenuClick) {
           onMenuClick('reports');
-          onClose();
+          onClose?.();
         }
         break;
       case 'commission':
         if (onMenuClick) {
           onMenuClick('commission');
-          onClose();
+          onClose?.();
         }
         break;
       case 'mpin':
@@ -176,62 +168,57 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
   };
 
   return (
-    <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent side="left" className="w-[300px] p-0">
-        <div className="flex h-full flex-col">
-          <SheetHeader className="bg-primary p-6 text-white">
-            <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16 border-2 border-white/20">
-                <AvatarImage src="" />
-                <AvatarFallback className="bg-white/10 text-xl text-white">
-                  {profile?.name?.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="text-left">
-                <SheetTitle className="text-white">{profile?.name}</SheetTitle>
-                <SheetDescription className="text-white/70">
-                  {profile?.mobile} • <span className="capitalize">{profile?.role}</span>
-                </SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-y-auto py-4">
-            <div className="px-4 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account Menu</p>
-            </div>
-            <div className="space-y-1 px-2">
-              {menuItems.map((item, index) => (
-                <Button 
-                  key={index} 
-                  variant="ghost" 
-                  className="h-auto w-full justify-start gap-4 py-3 text-left hover:bg-slate-100"
-                  onClick={() => handleMenuClick(item.id)}
-                >
-                  <div className="text-slate-500">{item.icon}</div>
-                  <div>
-                    <p className="text-sm font-medium">{item.label}</p>
-                    <p className="text-[10px] text-slate-400">{item.sub}</p>
-                  </div>
-                </Button>
-              ))}
-            </div>
-            
-            <Separator className="my-4" />
-            
-            <div className="px-4 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">App Info</p>
-              <p className="mt-2 text-xs text-slate-500">Version 1.0.0 (Build 2026)</p>
-            </div>
-          </div>
-
-          <div className="border-t p-4">
-            <Button variant="destructive" className="w-full gap-2" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" /> Logout
-            </Button>
+    <div className="flex h-full flex-col bg-white">
+      <div className="bg-primary p-6 text-white shrink-0">
+        <div className="flex items-center gap-4">
+          <Avatar className="h-16 w-16 border-2 border-white/20">
+            <AvatarFallback className="bg-white/10 text-xl text-white">
+              {profile?.name?.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="text-left">
+            <h3 className="text-xl font-bold">{profile?.name}</h3>
+            <p className="text-white/70 text-sm">
+              {profile?.mobile} • <span className="capitalize">{profile?.role}</span>
+            </p>
           </div>
         </div>
-      </SheetContent>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4">
+        <div className="px-4 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account Menu</p>
+        </div>
+        <div className="space-y-1 px-2">
+          {menuItems.map((item, index) => (
+            <Button 
+              key={index} 
+              variant="ghost" 
+              className="h-auto w-full justify-start gap-4 py-3 text-left hover:bg-slate-100 rounded-xl"
+              onClick={() => handleMenuClick(item.id)}
+            >
+              <div className="text-slate-500">{item.icon}</div>
+              <div>
+                <p className="text-sm font-medium">{item.label}</p>
+                <p className="text-[10px] text-slate-400">{item.sub}</p>
+              </div>
+            </Button>
+          ))}
+        </div>
+        
+        <Separator className="my-4" />
+        
+        <div className="px-4 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">App Info</p>
+          <p className="mt-2 text-xs text-slate-500 font-medium">Version 1.1.0 (Build 2026)</p>
+        </div>
+      </div>
+
+      <div className="border-t p-4 shrink-0">
+        <Button variant="destructive" className="w-full gap-2 rounded-xl h-11" onClick={handleLogout}>
+          <LogOut className="h-4 w-4" /> Logout
+        </Button>
+      </div>
 
       <MPINModal 
         open={showMPINModal} 
@@ -240,24 +227,35 @@ export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: P
       />
 
       <Dialog open={showUpgradeConfirm} onOpenChange={setShowUpgradeConfirm}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="rounded-3xl">
           <DialogHeader>
             <DialogTitle>Upgrade to Distributor</DialogTitle>
             <DialogDescription>
-              Are you sure you want to upgrade to Distributor for ₹500? 
-              This will give you higher commissions and the ability to manage your own retailer network.
+              Are you sure you want to upgrade for ₹500?
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex gap-2 sm:justify-end">
-            <Button variant="outline" onClick={() => setShowUpgradeConfirm(false)} disabled={upgrading}>
-              Cancel
-            </Button>
-            <Button className="bg-orange-600 hover:bg-orange-700 text-white" onClick={handleUpgrade} disabled={upgrading}>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowUpgradeConfirm(false)} disabled={upgrading}>Cancel</Button>
+            <Button className="bg-orange-600 hover:bg-orange-700" onClick={handleUpgrade} disabled={upgrading}>
               {upgrading ? 'Processing...' : 'Confirm Upgrade'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+export function ProfileView({ open, onClose, onToggleAdminMode, onMenuClick }: ProfileViewProps) {
+  return (
+    <Sheet open={open} onOpenChange={onClose}>
+      <SheetContent side="left" className="w-[300px] p-0 border-none">
+        <ProfileContent 
+          onClose={onClose} 
+          onToggleAdminMode={onToggleAdminMode} 
+          onMenuClick={onMenuClick} 
+        />
+      </SheetContent>
     </Sheet>
   );
 }

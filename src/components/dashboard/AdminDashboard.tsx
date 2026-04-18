@@ -28,7 +28,8 @@ import {
   Minus,
   Landmark,
   TrendingUp,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Monitor
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
@@ -47,6 +48,7 @@ import { MPINRequests } from '../admin/MPINRequests';
 import { WalletRequests } from '../admin/WalletRequests';
 import { PlansManagement } from '../admin/PlansManagement';
 import { LogoManagement } from '../admin/LogoManagement';
+import { SystemManagement } from '../admin/SystemManagement';
 import { CommissionStructure } from '../reports/CommissionStructure';
 
 interface AdminDashboardProps {
@@ -68,7 +70,8 @@ type AdminSection =
   | 'admin_profit'
   | 'plans'
   | 'commission_structure'
-  | 'logos';
+  | 'logos'
+  | 'system';
 
 export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
   const { fetchProfile } = useAuthContext();
@@ -491,6 +494,8 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
         return <PlansManagement />;
       case 'logos':
         return <LogoManagement />;
+      case 'system':
+        return <SystemManagement config={config} onUpdateConfig={handleUpdateConfig} />;
       case 'commission_structure':
         return <CommissionStructure config={config} forcedRole="admin" onUpdateConfig={handleUpdateConfig} />;
       default: 
@@ -507,6 +512,7 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
     { id: 'admin_profit', label: 'Admin Profit', icon: <TrendingUp className="h-5 w-5" /> },
     { id: 'commission_structure', label: 'Commission Management', icon: <Percent className="h-5 w-5" /> },
     { id: 'logos', label: 'Operator Logos', icon: <ImageIcon className="h-5 w-5" /> },
+    { id: 'system', label: 'All Management', icon: <Monitor className="h-5 w-5" /> },
     { id: 'wallet', label: 'Wallet', icon: <Wallet className="h-5 w-5" /> },
     { id: 'api', label: 'API Settings', icon: <Settings className="h-5 w-5" /> },
     { id: 'security', label: 'Security', icon: <ShieldCheck className="h-5 w-5" /> },
@@ -526,7 +532,7 @@ export function AdminDashboard({ onBackToRetailer }: AdminDashboardProps) {
   ];
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-72 flex-col border-r bg-slate-900 text-white sticky top-0 h-screen">
         <div className="p-8 border-b border-slate-800">

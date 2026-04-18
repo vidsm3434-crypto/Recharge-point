@@ -59,7 +59,7 @@ export function LogoManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -68,7 +68,7 @@ export function LogoManagement() {
     <Card className="border-none shadow-sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ImageIcon className="h-5 w-5 text-blue-600" />
+          <ImageIcon className="h-5 w-5 text-primary" />
           Operator Logo Management
         </CardTitle>
       </CardHeader>
@@ -98,7 +98,7 @@ export function LogoManagement() {
         </div>
 
         <Button 
-          className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold h-12 gap-2"
+          className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-12 gap-2"
           onClick={handleSave}
           disabled={saving}
         >

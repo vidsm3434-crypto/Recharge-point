@@ -44,7 +44,7 @@ export function ApiSettings({ config, onUpdateConfig }: ApiSettingsProps) {
           <Card className="border-none shadow-sm">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <Database size={16} className="text-blue-500" /> Primary API Provider
+                <Database size={16} className="text-primary" /> Primary API Provider
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -187,7 +187,7 @@ export function ApiSettings({ config, onUpdateConfig }: ApiSettingsProps) {
                   <Input placeholder="Amount" className="text-xs" id="test-amount" />
                   <Button 
                     size="sm" 
-                    className="bg-yellow-600 hover:bg-yellow-700"
+                    className="bg-primary hover:bg-primary/90"
                     onClick={async () => {
                       const mobile = (document.getElementById('test-mobile') as HTMLInputElement).value;
                       const amount = (document.getElementById('test-amount') as HTMLInputElement).value;
@@ -291,7 +291,7 @@ export function ApiSettings({ config, onUpdateConfig }: ApiSettingsProps) {
           <Card className="border-none shadow-sm">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <QrCode size={16} className="text-purple-500" /> UPI & QR Settings
+                <QrCode size={16} className="text-secondary" /> UPI & QR Settings
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
