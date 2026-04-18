@@ -55,7 +55,6 @@ Date: ${new Date(transaction.timestamp).toLocaleString()}
 Ref ID: ${transaction.details?.opid || 'N/A'}
 State: ${transaction.details?.state || 'N/A'}
 ${transaction.details?.closing_balance !== undefined ? `Closing Balance: ₹${transaction.details.closing_balance.toFixed(2)}\n` : ''}${transaction.details?.commission_earned !== undefined && transaction.details.commission_earned > 0 ? `Commission Earned: ₹${transaction.details.commission_earned.toFixed(2)}\n` : ''}${showRetailerInfo ? `Retailer: ${retailerProfile?.retailer_id || 'N/A'}\n${retailerProfile?.name || 'N/A'}\n(${retailerProfile?.mobile || 'N/A'})` : ''}
-Message: ${transaction.details?.error_message || transaction.details?.api_response?.message || 'N/A'}
 ----------------
 Generated via RechargePoint
     `.trim();
@@ -202,13 +201,6 @@ Generated via RechargePoint
                 </div>
               )}
 
-              {(transaction.details?.error_message || transaction.details?.api_response?.message) ? (
-                <DetailRow 
-                  icon={<Info className="h-4 w-4" />} 
-                  label="Message" 
-                  value={isRetailer ? 'Recharge Failed. Please try again later.' : (transaction.details?.error_message || transaction.details?.api_response?.message)} 
-                />
-              ) : null}
               {transaction.status === 'failed' && transaction.details?.rejectReason && (
                 <div className="flex gap-3 items-start p-3 bg-red-50 rounded-xl border border-red-100">
                   <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
