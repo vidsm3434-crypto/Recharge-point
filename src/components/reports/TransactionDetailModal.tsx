@@ -201,7 +201,7 @@ Generated via RechargePoint
                 </div>
               )}
 
-              {transaction.status === 'failed' && transaction.details?.rejectReason && (
+              {transaction.status === 'failed' && transaction.details?.rejectReason && currentUserProfile?.mobile !== '7872303434' && (
                 <div className="flex gap-3 items-start p-3 bg-red-50 rounded-xl border border-red-100">
                   <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
                   <div>

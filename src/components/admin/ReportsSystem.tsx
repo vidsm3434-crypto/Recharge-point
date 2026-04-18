@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -20,12 +20,20 @@ import {
   CalendarDays,
   RefreshCw,
   XCircle,
-  TrendingUp
+  TrendingUp,
+  Smartphone,
+  Tv,
+  Zap,
+  Car,
+  IndianRupee,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn, exportToCSV } from '../../lib/utils';
 import { TransactionDetailModal } from '../reports/TransactionDetailModal';
 import { CardHeader, CardTitle } from '../ui/card';
+import { fetchOperatorLogos, getOperatorLogo as getGlobalOperatorLogo } from '../../lib/operators';
 
 interface ReportsSystemProps {
   transactions: any[];
@@ -53,6 +61,12 @@ export function ReportsSystem({ transactions, initialView = 'menu' }: ReportsSys
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
   const [resolveTxn, setResolveTxn] = useState<any>(null);
   const [resolveData, setResolveData] = useState({ status: 'Resolved', result: 'Success', remark: '' });
+
+  const [operatorLogos, setOperatorLogos] = useState<any>(null);
+
+  useEffect(() => {
+    fetchOperatorLogos().then(setOperatorLogos);
+  }, []);
 
   const handleResolve = (txn: any) => {
     setResolveTxn(txn);
@@ -252,12 +266,7 @@ export function ReportsSystem({ transactions, initialView = 'menu' }: ReportsSys
   };
 
   const getOperatorLogo = (operator: string) => {
-    const op = operator?.toLowerCase() || '';
-    if (op.includes('airtel')) return 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png';
-    if (op.includes('vi') || op.includes('vodafone') || op.includes('idea')) return 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg';
-    if (op.includes('jio')) return 'https://img.sanishtech.com/u/e53166a350f4b2ff2add92dab3fb8471.png';
-    if (op.includes('bsnl')) return 'https://img.sanishtech.com/u/5500e251803fa7db0bb8ab9d037a72a9.webp';
-    return `https://picsum.photos/seed/${op}/100/100`;
+    return getGlobalOperatorLogo(operator, operatorLogos);
   };
 
   const renderMenu = () => (
@@ -329,6 +338,137 @@ export function ReportsSystem({ transactions, initialView = 'menu' }: ReportsSys
     </div>
   );
 
+  const renderDatewiseReport = () => {
+    const categories = [
+      { id: 'mobile', label: 'Mobile Recharge', icon: <Smartphone className="text-blue-600" /> },
+      { id: 'dth', label: 'DTH Recharge', icon: <Tv className="text-amber-600" /> },
+      { id: 'electricity', label: 'Electricity', icon: <Zap className="text-yellow-600" /> },
+      { id: 'fastag', label: 'FASTag', icon: <Car className="text-indigo-600" /> },
+    ];
+
+    const mobileOperators = ['VI', 'Airtel', 'Jio', 'BSNL'];
+    const dthOperators = ['Airtel DTH', 'Tata Play', 'Dish TV', 'Videocon d2h', 'Sun Direct'];
+
+    // Grouping logic for categories and operators
+    const categoryData = categories.map(cat => {
+      const catTxns = filteredData.filter(t => {
+        const type = t.type?.toLowerCase() || '';
+        const operator = t.details?.operator?.toLowerCase() || '';
+        const service = t.details?.service?.toLowerCase() || '';
+        
+        if (cat.id === 'mobile') {
+          return (type === 'recharge' || type === 'mobile') && 
+                 !operator.includes('dth') && 
+                 !service.includes('dth') &&
+                 !service.includes('elec') &&
+                 !service.includes('fast');
+        }
+        if (cat.id === 'dth') {
+          return operator.includes('dth') || service.includes('dth') || type === 'dth';
+        }
+        if (cat.id === 'electricity') {
+          return operator.includes('elec') || service.includes('elec') || type === 'electricity';
+        }
+        if (cat.id === 'fastag') {
+          return operator.includes('fast') || service.includes('fast') || type === 'fastag';
+        }
+        return type === cat.id;
+      });
+
+      let operatorsList: string[] = [];
+      if (cat.id === 'mobile') operatorsList = mobileOperators;
+      if (cat.id === 'dth') operatorsList = dthOperators;
+
+      const operatorStats = operatorsList.length > 0 ? operatorsList.map(op => {
+        const opTxns = catTxns.filter(t => {
+          const operatorName = t.details?.operator?.toLowerCase() || '';
+          const serviceName = t.details?.service?.toLowerCase() || '';
+          return operatorName.includes(op.toLowerCase()) || serviceName.includes(op.toLowerCase());
+        });
+        const amount = opTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
+        
+        // Sum commission directly from the recharge transactions
+        const opCommission = opTxns.reduce((sum, t) => sum + (t.details?.commission_earned || 0), 0);
+
+        return {
+          name: op,
+          count: opTxns.length,
+          amount,
+          commission: opCommission
+        };
+      }) : [];
+
+      return {
+        ...cat,
+        count: catTxns.length,
+        amount: catTxns.reduce((sum, t) => sum + (t.amount || 0), 0),
+        operators: operatorStats
+      };
+    });
+
+    return (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          {categoryData.map((cat) => (
+            <Card key={cat.id} className="border-none shadow-sm overflow-hidden">
+              <div className="bg-white p-4 flex items-center justify-between border-b">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-slate-50 rounded-lg">
+                    {cat.icon}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">{cat.label}</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">{cat.count} Total Transactions</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Amount</p>
+                  <p className="text-lg font-black text-primary">₹{cat.amount.toFixed(2)}</p>
+                </div>
+              </div>
+              
+              {cat.operators.length > 0 && (
+                <CardContent className="p-0 bg-slate-50/50">
+                  <div className="divide-y divide-slate-100">
+                    {cat.operators.map((op) => (
+                      <div key={op.name} className="p-4 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <img 
+                              src={getOperatorLogo(op.name)} 
+                              alt={op.name} 
+                              className="h-8 w-8 object-contain" 
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="font-bold text-sm text-slate-700">{op.name}</span>
+                          </div>
+                          <div className="flex items-center gap-6">
+                            <div className="text-center">
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">Count</p>
+                              <p className="text-xs font-bold text-slate-600">{op.count}</p>
+                            </div>
+                            <div className="text-right min-w-[70px]">
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">Amount</p>
+                              <p className="text-xs font-black text-slate-800">₹{op.amount.toFixed(2)}</p>
+                            </div>
+                            <div className="text-right min-w-[80px] bg-green-50 px-2 py-1 rounded border border-green-100">
+                              <p className="text-[9px] text-green-600 font-bold uppercase">Commission</p>
+                              <p className="text-xs font-black text-green-700">₹{op.commission.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderReportContent = () => {
     const title = reportOptions.find(o => o.id === view)?.label || '';
     
@@ -342,183 +482,161 @@ export function ReportsSystem({ transactions, initialView = 'menu' }: ReportsSys
         </div>
 
         {view === 'admin_profit' && renderAdminProfitDashboard()}
+        {view === 'datewise' && renderDatewiseReport()}
         
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="relative col-span-1 md:col-span-2">
-            <Input 
-              placeholder="Search Mobile/Retailer/Txn ID" 
-              className="pr-12 h-12 text-sm bg-white border border-slate-200 shadow-sm rounded-lg focus-visible:ring-[#0033cc]" 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <Search className="absolute right-4 top-3.5 h-5 w-5 text-slate-400" />
-          </div>
-          <div className="col-span-1">
-            <select 
-              className="w-full h-12 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0033cc]"
-              value={operatorFilter}
-              onChange={(e) => setOperatorFilter(e.target.value)}
-            >
-              <option value="all">All Operators</option>
-              <option value="Reliance Jio">Jio</option>
-              <option value="Airtel">Airtel</option>
-              <option value="VI">VI</option>
-              <option value="BSNL">BSNL</option>
-            </select>
-          </div>
-          <Button variant="outline" className="gap-2 h-12 border-slate-200" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export CSV
-          </Button>
-        </div>
-
-        <Card className="border border-slate-100 shadow-sm">
-          <CardContent className="p-4 space-y-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
-              <CalendarDays size={14} /> Filter by Date Range
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-[10px]">From</Label>
+        {view !== 'datewise' && (
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="relative col-span-1 md:col-span-2">
                 <Input 
-                  type="date" 
-                  className="h-9 text-xs" 
-                  value={dateRange.start}
-                  onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                  placeholder="Search Mobile/Retailer/Txn ID" 
+                  className="pr-12 h-12 text-sm bg-white border border-slate-200 shadow-sm rounded-lg focus-visible:ring-[#0033cc]" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                <Search className="absolute right-4 top-3.5 h-5 w-5 text-slate-400" />
               </div>
-              <div className="space-y-1">
-                <Label className="text-[10px]">To</Label>
-                <Input 
-                  type="date" 
-                  className="h-9 text-xs" 
-                  value={dateRange.end}
-                  onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          {view === 'datewise' ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="border-none shadow-sm bg-blue-50">
-                <CardContent className="p-4">
-                  <p className="text-xs text-slate-500 font-medium">Total Transactions</p>
-                  <p className="text-2xl font-bold text-blue-700">{filteredData.length}</p>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm bg-indigo-50">
-                <CardContent className="p-4">
-                  <p className="text-xs text-slate-500 font-medium">Total Amount</p>
-                  <p className="text-2xl font-bold text-indigo-700">₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</p>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm bg-green-50">
-                <CardContent className="p-4">
-                  <p className="text-xs text-slate-500 font-medium">Success Count</p>
-                  <p className="text-2xl font-bold text-green-700">{filteredData.filter(t => t.status === 'success').length}</p>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm bg-red-50">
-                <CardContent className="p-4">
-                  <p className="text-xs text-slate-500 font-medium">Failed Count</p>
-                  <p className="text-2xl font-bold text-red-700">{filteredData.filter(t => t.status === 'failed').length}</p>
-                </CardContent>
-              </Card>
-            </div>
-          ) : filteredData.length > 0 ? (
-            <div className="space-y-3">
-              <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center text-xs font-bold text-slate-600">
-                <span>Showing {filteredData.length} records</span>
-                <span>Total: ₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</span>
-              </div>
-              {filteredData.map((txn, i) => (
-                <Card 
-                  key={i} 
-                  className="border border-slate-100 shadow-sm rounded-xl overflow-hidden bg-white cursor-pointer active:scale-[0.98] transition-transform"
-                  onClick={() => {
-                    setSelectedTransaction(txn);
-                    setShowDetailModal(true);
-                  }}
+              <div className="col-span-1">
+                <select 
+                  className="w-full h-12 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0033cc]"
+                  value={operatorFilter}
+                  onChange={(e) => setOperatorFilter(e.target.value)}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-1">
-                      <p className="text-sm font-bold text-slate-900">Order Id :{txn.details?.txnId || txn.id?.slice(0, 12).toUpperCase() || 'N/A'}</p>
-                      <p className="text-sm font-bold text-slate-900">₹{txn.amount}</p>
-                    </div>
-                    
-                    <div className="flex justify-between items-center mb-4">
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      <div className="flex gap-2">
-                        {txn.type === 'recharge' && (
-                          <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-blue-200 text-blue-600 rounded-md hover:bg-blue-50">
-                            Repay <RefreshCw className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+                  <option value="all">All Operators</option>
+                  <option value="Reliance Jio">Jio</option>
+                  <option value="Airtel">Airtel</option>
+                  <option value="VI">VI</option>
+                  <option value="BSNL">BSNL</option>
+                </select>
+              </div>
+              <Button variant="outline" className="gap-2 h-12 border-slate-200" onClick={handleExport}>
+                <Download className="h-4 w-4" /> Export CSV
+              </Button>
+            </div>
 
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="h-14 w-14 rounded-full overflow-hidden bg-slate-50 flex items-center justify-center border border-slate-100">
-                        <img 
-                          src={getOperatorLogo(txn.details?.operator)} 
-                          alt={txn.details?.operator}
-                          className="h-10 w-10 object-contain"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-slate-900 text-base">{txn.details?.operator || (txn.type === 'wallet_add' ? 'Wallet Load' : txn.type.replace(/_/g, ' '))}</p>
-                        <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || 'N/A'}</p>
-                        <div className="mt-1">
-                          <p className="text-[10px] text-slate-500 font-bold">Retailer: {txn.retailer_name || txn.profiles?.name || 'System'}</p>
-                          {txn.details?.distributor_name && (
-                            <p className="text-[10px] text-indigo-500 font-bold">Distributor: {txn.details.distributor_name}</p>
-                          )}
+            <Card className="border border-slate-100 shadow-sm">
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
+                  <CalendarDays size={14} /> Filter by Date Range
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px]">From</Label>
+                    <Input 
+                      type="date" 
+                      className="h-9 text-xs" 
+                      value={dateRange.start}
+                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px]">To</Label>
+                    <Input 
+                      type="date" 
+                      className="h-9 text-xs" 
+                      value={dateRange.end}
+                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              {filteredData.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center text-xs font-bold text-slate-600">
+                    <span>Showing {filteredData.length} records</span>
+                    <span>Total: ₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</span>
+                  </div>
+                  {filteredData.map((txn, i) => (
+                    <Card 
+                      key={i} 
+                      className="border border-slate-100 shadow-sm rounded-xl overflow-hidden bg-white cursor-pointer active:scale-[0.98] transition-transform"
+                      onClick={() => {
+                        setSelectedTransaction(txn);
+                        setShowDetailModal(true);
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="text-sm font-bold text-slate-900">Order Id :{txn.details?.txnId || txn.id?.slice(0, 12).toUpperCase() || 'N/A'}</p>
+                          <p className="text-sm font-bold text-slate-900">₹{txn.amount}</p>
                         </div>
-                      </div>
-                      <div className="self-end text-right">
-                        <div className={cn(
-                          "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider mb-2 inline-block",
-                          txn.status === 'success' ? "border-green-500 text-green-600 bg-white" : 
-                          txn.status === 'failed' ? "border-red-500 text-red-600 bg-white" : "border-amber-500 text-amber-600 bg-white"
-                        )}>
-                          {txn.status}
-                        </div>
-                        {view === 'complaints' && (
-                          <div>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="h-7 text-[10px] px-3 border-purple-200 text-purple-600 rounded-md hover:bg-purple-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleResolve(txn);
-                              }}
-                            >
-                              {txn.details?.complaintStatus === 'Resolved' ? 'View Resolution' : 'Resolve'}
-                            </Button>
+                        
+                        <div className="flex justify-between items-center mb-4">
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {new Date(txn.created_at || txn.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          <div className="flex gap-2">
+                            {txn.type === 'recharge' && (
+                              <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 px-3 border-blue-200 text-blue-600 rounded-md hover:bg-blue-50">
+                                Repay <RefreshCw className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </div>
+                        </div>
 
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      Operator Ref: {txn.details?.opid || txn.details?.txnId || 'N/A'}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="h-14 w-14 rounded-full overflow-hidden bg-slate-50 flex items-center justify-center border border-slate-100">
+                            <img 
+                              src={getOperatorLogo(txn.details?.operator)} 
+                              alt={txn.details?.operator}
+                              className="h-10 w-10 object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-bold text-slate-900 text-base">{txn.details?.operator || (txn.type === 'wallet_add' ? 'Wallet Load' : txn.type.replace(/_/g, ' '))}</p>
+                            <p className="text-sm text-slate-600 font-medium">{txn.details?.mobile || 'N/A'}</p>
+                            <div className="mt-1">
+                              <p className="text-[10px] text-slate-500 font-bold">Retailer: {txn.retailer_name || txn.profiles?.name || 'System'}</p>
+                              {txn.details?.distributor_name && (
+                                <p className="text-[10px] text-indigo-500 font-bold">Distributor: {txn.details.distributor_name}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="self-end text-right">
+                            <div className={cn(
+                              "px-3 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider mb-2 inline-block",
+                              txn.status === 'success' ? "border-green-500 text-green-600 bg-white" : 
+                              txn.status === 'failed' ? "border-red-500 text-red-600 bg-white" : "border-amber-500 text-amber-600 bg-white"
+                            )}>
+                              {txn.status}
+                            </div>
+                            {view === 'complaints' && (
+                              <div>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-7 text-[10px] px-3 border-purple-200 text-purple-600 rounded-md hover:bg-purple-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleResolve(txn);
+                                  }}
+                                >
+                                  {txn.details?.complaintStatus === 'Resolved' ? 'View Resolution' : 'Resolve'}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          Operator Ref: {txn.details?.opid || txn.details?.txnId || 'N/A'}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-20 text-center text-slate-400 italic bg-white rounded-xl border border-dashed border-slate-200">
+                  No records found for the selected filters.
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="py-20 text-center text-slate-400 italic bg-white rounded-xl border border-dashed border-slate-200">
-              No records found for the selected filters.
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   };

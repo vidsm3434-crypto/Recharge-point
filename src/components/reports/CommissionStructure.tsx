@@ -7,6 +7,7 @@ import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from 'sonner';
+import { fetchOperatorLogos, getOperatorLogo as getGlobalOperatorLogo } from '../../lib/operators';
 
 interface CommissionStructureProps {
   config?: any;
@@ -20,7 +21,12 @@ export function CommissionStructure({ config: initialConfig, forcedRole, onUpdat
   const [loading, setLoading] = useState(!initialConfig);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
+  const [operatorLogos, setOperatorLogos] = useState<any>(null);
   const role = forcedRole || profile?.role || 'retailer';
+
+  useEffect(() => {
+    fetchOperatorLogos().then(setOperatorLogos);
+  }, []);
 
   useEffect(() => {
     if (!initialConfig) {
@@ -104,12 +110,16 @@ export function CommissionStructure({ config: initialConfig, forcedRole, onUpdat
 
   // Default rates if not in config
   const operators = [
-    { name: 'Airtel', fullName: 'Airtel', logo: 'https://img.sanishtech.com/u/f1c9578535dfe829e17b81f1b35757bd.png', default: { api: 0.80, retailer: 0.50, distributor: 0.20 } },
-    { name: 'Vodafone', fullName: 'Vodafone', logo: 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg', default: { api: 3.50, retailer: 2.50, distributor: 0.70 } },
-    { name: 'Idea', fullName: 'Idea', logo: 'https://img.sanishtech.com/u/60bb10caa5dd136a40dba33d7eb5268e.jpg', default: { api: 3.50, retailer: 2.50, distributor: 0.70 } },
-    { name: 'Jio', fullName: 'Reliance Jio', logo: 'https://img.sanishtech.com/u/e53166a350f4b2ff2add92dab3fb8471.png', default: { api: 0.55, retailer: 0.35, distributor: 0.15 } },
-    { name: 'BSNL', fullName: 'BSNL', logo: 'https://img.sanishtech.com/u/5500e251803fa7db0bb8ab9d037a72a9.webp', default: { api: 2.80, retailer: 2.00, distributor: 0.60 } },
+    { name: 'Airtel', fullName: 'Airtel', default: { api: 0.80, retailer: 0.50, distributor: 0.20 } },
+    { name: 'Vodafone', fullName: 'Vodafone VI', default: { api: 3.50, retailer: 2.50, distributor: 0.70 } },
+    { name: 'Idea', fullName: 'Idea VI', default: { api: 3.50, retailer: 2.50, distributor: 0.70 } },
+    { name: 'Jio', fullName: 'Reliance Jio', default: { api: 0.55, retailer: 0.35, distributor: 0.15 } },
+    { name: 'BSNL', fullName: 'BSNL', default: { api: 2.80, retailer: 2.00, distributor: 0.60 } },
   ];
+
+  const getOperatorLogoDisplay = (name: string) => {
+    return getGlobalOperatorLogo(name, operatorLogos);
+  };
 
   const currentConfig = isEditing ? editData : config;
 
@@ -119,17 +129,25 @@ export function CommissionStructure({ config: initialConfig, forcedRole, onUpdat
     return {
       id: op.name,
       name: op.fullName,
-      logo: op.logo,
+      logo: getOperatorLogoDisplay(op.name),
       api: override?.api ?? op.default.api,
       retailer: override?.retailer ?? op.default.retailer,
       distributor: override?.distributor ?? op.default.distributor
     };
   });
 
+  const dthOperators = [
+    { name: 'Tata Play', default: { api: 3.00, retailer: 2.50, distributor: 0.50 } },
+    { name: 'Airtel DTH', default: { api: 3.00, retailer: 2.50, distributor: 0.50 } },
+    { name: 'Dish TV', default: { api: 3.00, retailer: 2.50, distributor: 0.50 } },
+    { name: 'Videocon d2h', default: { api: 3.00, retailer: 2.50, distributor: 0.50 } },
+    { name: 'Sun Direct', default: { api: 3.00, retailer: 2.50, distributor: 0.50 } },
+  ];
+
   const otherServices = [
-    { name: 'DTH Recharge', icon: <Tv className="h-5 w-5" />, status: 'Coming Soon' },
+    { name: 'DTH Recharge', icon: <Tv className="h-5 w-5" />, operators: dthOperators },
     { name: 'Electricity Bill', icon: <Zap className="h-5 w-5" />, status: 'Coming Soon' },
-    { name: 'Data Card', icon: <Globe className="h-5 w-5" />, status: 'Coming Soon' },
+    { name: 'FASTag', icon: <Globe className="h-5 w-5" />, status: 'Coming Soon' },
   ];
 
   return (

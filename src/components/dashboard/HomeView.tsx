@@ -29,6 +29,32 @@ export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelec
       .catch(err => console.error('Error fetching banners:', err));
   }, []);
 
+  useEffect(() => {
+    if (profile?.id) {
+      // Subscribe to profile changes for real-time balance updates
+      const channel = supabase
+        .channel(`profile-updates-${profile.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profiles',
+            filter: `id=eq.${profile.id}`
+          },
+          (payload) => {
+            console.log('Real-time profile update noticed in HomeView:', payload.new);
+            fetchProfile(profile.id);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [profile?.id, fetchProfile]);
+
   const handleUpgrade = async () => {
     if (!profile) return;
     if ((profile.wallet_balance || 0) < 500) {

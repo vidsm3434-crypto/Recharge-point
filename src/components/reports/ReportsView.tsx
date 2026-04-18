@@ -21,7 +21,10 @@ import {
   UserCheck,
   ChevronRight,
   ArrowLeft,
-  RefreshCw
+  RefreshCw,
+  Tv,
+  Zap,
+  Car
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
@@ -29,6 +32,8 @@ import { cn, exportToCSV } from '../../lib/utils';
 import { toast } from 'sonner';
 import { fetchOperatorLogos, getOperatorLogo as getGlobalOperatorLogo } from '../../lib/operators';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { CommissionStructure } from './CommissionStructure';
+import { Label } from '../ui/label';
 
 type ReportType = 
   | 'menu'
@@ -338,18 +343,22 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
         Type: t.type,
       };
 
-      if (view === 'transactions') {
-        return {
+      if (view === 'transactions' || view === 'recharge') {
+        const row: any = {
           ...base,
           Mobile: t.details?.mobile || 'N/A',
           Operator: t.details?.operator || 'N/A',
           State: t.details?.state || 'N/A',
           'Transaction ID': t.details?.txnId || t.id,
           'Operator ID': t.details?.opid || 'N/A',
-          Message: t.details?.error_message || t.details?.api_response?.message || 'N/A',
           'Closing Balance': t.details?.closing_balance || 'N/A',
           'Commission Earned': t.details?.commission_earned || 0,
         };
+        // Remove Message for demo user
+        if (profile?.mobile !== '7872303434') {
+          row.Message = t.details?.error_message || t.details?.api_response?.message || 'N/A';
+        }
+        return row;
       } else if (view === 'wallet' || view === 'online_deposit' || view === 'manual_deposit') {
         return {
           ...base,
@@ -358,18 +367,6 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
           'Ref Number': t.details?.refNumber || t.details?.razorpay_payment_id || 'N/A',
           Note: t.details?.note || 'N/A',
           'Closing Balance': t.details?.closing_balance || 'N/A',
-        };
-      } else if (view === 'recharge') {
-        return {
-          ...base,
-          Mobile: t.details?.mobile || 'N/A',
-          Operator: t.details?.operator || 'N/A',
-          State: t.details?.state || 'N/A',
-          'Transaction ID': t.details?.txnId || t.id,
-          'Operator ID': t.details?.opid || 'N/A',
-          Message: t.details?.error_message || t.details?.api_response?.message || 'N/A',
-          'Closing Balance': t.details?.closing_balance || 'N/A',
-          'Commission Earned': t.details?.commission_earned || 0,
         };
       } else if (view === 'complaints') {
         return {
@@ -394,6 +391,137 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
 
   const getOperatorLogo = (operator: string) => {
     return getGlobalOperatorLogo(operator, operatorLogos);
+  };
+
+  const renderDatewiseReport = () => {
+    const categories = [
+      { id: 'mobile', label: 'Mobile Recharge', icon: <Smartphone className="text-blue-600" /> },
+      { id: 'dth', label: 'DTH Recharge', icon: <Tv className="text-purple-600" /> },
+      { id: 'electricity', label: 'Electricity Bill', icon: <Zap className="text-amber-600" /> },
+      { id: 'fastag', label: 'FASTag', icon: <Car className="text-green-600" /> },
+    ];
+
+    const mobileOperators = ['VI', 'Airtel', 'Jio', 'BSNL'];
+    const dthOperators = ['Airtel DTH', 'Tata Play', 'Dish TV', 'Videocon d2h', 'Sun Direct'];
+
+    // Grouping logic for categories and operators
+    const categoryData = categories.map(cat => {
+      const catTxns = filteredData.filter(t => {
+        const type = t.type?.toLowerCase() || '';
+        const operator = t.details?.operator?.toLowerCase() || '';
+        const service = t.details?.service?.toLowerCase() || '';
+        
+        if (cat.id === 'mobile') {
+          return (type === 'recharge' || type === 'mobile') && 
+                 !operator.includes('dth') && 
+                 !service.includes('dth') &&
+                 !service.includes('elec') &&
+                 !service.includes('fast');
+        }
+        if (cat.id === 'dth') {
+          return operator.includes('dth') || service.includes('dth') || type === 'dth';
+        }
+        if (cat.id === 'electricity') {
+          return operator.includes('elec') || service.includes('elec') || type === 'electricity';
+        }
+        if (cat.id === 'fastag') {
+          return operator.includes('fast') || service.includes('fast') || type === 'fastag';
+        }
+        return type === cat.id;
+      });
+
+      let operatorsList: string[] = [];
+      if (cat.id === 'mobile') operatorsList = mobileOperators;
+      if (cat.id === 'dth') operatorsList = dthOperators;
+
+      const operatorStats = operatorsList.length > 0 ? operatorsList.map(op => {
+        const opTxns = catTxns.filter(t => {
+          const operatorName = t.details?.operator?.toLowerCase() || '';
+          const serviceName = t.details?.service?.toLowerCase() || '';
+          return operatorName.includes(op.toLowerCase()) || serviceName.includes(op.toLowerCase());
+        });
+        const amount = opTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
+        
+        // Sum commission directly from the recharge transactions
+        const opCommission = opTxns.reduce((sum, t) => sum + (t.details?.commission_earned || 0), 0);
+
+        return {
+          name: op,
+          count: opTxns.length,
+          amount,
+          commission: opCommission
+        };
+      }) : [];
+
+      return {
+        ...cat,
+        count: catTxns.length,
+        amount: catTxns.reduce((sum, t) => sum + (t.amount || 0), 0),
+        operators: operatorStats
+      };
+    });
+
+    return (
+      <div className="space-y-6 pb-20">
+        <div className="space-y-4">
+          {categoryData.map((cat) => (
+            <Card key={cat.id} className="border-none shadow-sm overflow-hidden bg-white">
+              <div className="p-4 flex items-center justify-between border-b">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-slate-50 rounded-lg">
+                    {cat.icon}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800">{cat.label}</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">{cat.count} Total Transactions</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Amount</p>
+                  <p className="text-lg font-black text-blue-600">₹{cat.amount.toFixed(2)}</p>
+                </div>
+              </div>
+              
+              {cat.operators.length > 0 && (
+                <CardContent className="p-0 bg-slate-50/50">
+                  <div className="divide-y divide-slate-100">
+                    {cat.operators.map((op) => (
+                      <div key={op.name} className="p-4 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <img 
+                              src={getOperatorLogo(op.name)} 
+                              alt={op.name} 
+                              className="h-8 w-8 object-contain" 
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="font-bold text-sm text-slate-700">{op.name}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
+                            <div className="text-center">
+                              <p className="text-[9px] text-slate-400 font-bold uppercase text-right">Count</p>
+                              <p className="text-xs font-bold text-slate-600 text-right">{op.count}</p>
+                            </div>
+                            <div className="text-right min-w-[70px]">
+                              <p className="text-[9px] text-slate-400 font-bold uppercase">Amount</p>
+                              <p className="text-xs font-black text-slate-800">₹{op.amount.toFixed(2)}</p>
+                            </div>
+                            <div className="text-right min-w-[80px] bg-green-50 px-2 py-1 rounded border border-green-100">
+                              <p className="text-[9px] text-green-600 font-bold uppercase">Commission</p>
+                              <p className="text-xs font-black text-green-700">₹{op.commission.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const renderMenu = () => (
@@ -475,34 +603,7 @@ export function ReportsView({ mode = 'personal' }: ReportsViewProps) {
 
           <ScrollArea className="flex-1">
             {view === 'datewise' ? (
-              <div className="space-y-4 pb-24">
-                <div className="grid grid-cols-2 gap-4">
-                  <Card className="border-none shadow-sm bg-blue-50">
-                    <CardContent className="p-4">
-                      <p className="text-xs text-slate-500 font-medium">Total Transactions</p>
-                      <p className="text-2xl font-bold text-blue-700">{filteredData.length}</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-none shadow-sm bg-primary/5">
-                    <CardContent className="p-4">
-                      <p className="text-xs text-slate-500 font-medium">Total Amount</p>
-                      <p className="text-2xl font-bold text-primary">₹{filteredData.reduce((acc, t) => acc + (t.amount || 0), 0).toFixed(2)}</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-none shadow-sm bg-secondary/10">
-                    <CardContent className="p-4">
-                      <p className="text-xs text-slate-500 font-medium">Success Count</p>
-                      <p className="text-2xl font-bold text-secondary">{filteredData.filter(t => t.status === 'success').length}</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-none shadow-sm bg-destructive/10">
-                    <CardContent className="p-4">
-                      <p className="text-xs text-slate-500 font-medium">Failed Count</p>
-                      <p className="text-2xl font-bold text-destructive">{filteredData.filter(t => t.status === 'failed').length}</p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+              renderDatewiseReport()
             ) : (
               <div className="space-y-4 pb-24">
                 {loading ? (
