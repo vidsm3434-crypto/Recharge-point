@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { Smartphone, Tv, Zap, Car, CreditCard, Plus, ArrowRight, Gift, Info, ShieldCheck, Sparkles, Percent, LogOut } from 'lucide-react';
+import { Smartphone, RefreshCw, Tv, Zap, Car, CreditCard, Plus, ArrowRight, Gift, Info, ShieldCheck, Sparkles, Percent, LogOut } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AddBalanceModal } from './AddBalanceModal';
 import { BannerSlider } from './BannerSlider';
@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../ui/dialog';
 
 export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelect: () => void, onViewCommission?: () => void }) {
-  const { profile, fetchProfile } = useAuthContext();
+  const { profile, fetchProfile, loading } = useAuthContext();
   const [showAddBalance, setShowAddBalance] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
@@ -109,7 +109,24 @@ export function HomeView({ onServiceSelect, onViewCommission }: { onServiceSelec
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-0.5">
-                <p className="text-[10px] opacity-70 font-black uppercase tracking-[0.2em]">Available Balance</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] opacity-70 font-black uppercase tracking-[0.2em]">Available Balance</p>
+                  <button 
+                    onClick={() => {
+                      if (profile?.id) {
+                        toast.promise(fetchProfile(profile.id), {
+                          loading: 'Updating balance...',
+                          success: 'Balance updated',
+                          error: 'Failed to update balance'
+                        });
+                      }
+                    }}
+                    className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                    title="Refresh Balance"
+                  >
+                    <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+                  </button>
+                </div>
                 <h2 className="text-2xl md:text-3xl font-black">₹{profile?.wallet_balance?.toFixed(2) || '0.00'}</h2>
               </div>
               <div className="flex gap-3">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { Home, History, HelpCircle, Menu, LayoutGrid, Gift, Bell, Info, X, ShieldCheck, Percent, Loader2, Users, User } from 'lucide-react';
+import { Home, History, HelpCircle, Menu, LayoutGrid, Gift, Bell, Info, X, ShieldCheck, Percent, Loader2, Users, User, RefreshCw } from 'lucide-react';
 import { HomeView } from './HomeView';
 import { RechargeView } from '../recharge/RechargeView';
 import { ReportsView } from '../reports/ReportsView';
@@ -23,7 +23,7 @@ interface RetailerDashboardProps {
 }
 
 export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }: RetailerDashboardProps) {
-  const { profile } = useAuthContext();
+  const { profile, fetchProfile, loading } = useAuthContext();
   const [activeTab, setActiveTab] = useState<'home' | 'services' | 'reports' | 'help' | 'refer' | 'kyc' | 'commission' | 'profile' | 'settings'>('home');
   const [showProfile, setShowProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -173,7 +173,23 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
             </div>
           </div>
           <div className="rounded-xl bg-primary p-3 text-white shadow-sm">
-            <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Wallet Balance</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Wallet Balance</p>
+              <button 
+                onClick={() => {
+                  if (profile?.id) {
+                    toast.promise(fetchProfile(profile.id), {
+                      loading: 'Updating...',
+                      success: 'Updated',
+                      error: 'Failed'
+                    });
+                  }
+                }}
+                className="p-1 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+              </button>
+            </div>
             <p className="text-lg font-bold">₹{profile?.wallet_balance?.toFixed(2) || '0.00'}</p>
           </div>
         </div>
@@ -274,6 +290,22 @@ export function RetailerDashboard({ onToggleAdminMode, onToggleDistributorMode }
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="relative rounded-full text-white hover:bg-white/10"
+              onClick={() => {
+                if (profile?.id) {
+                  toast.promise(fetchProfile(profile.id), {
+                    loading: 'Updating...',
+                    success: 'Updated',
+                    error: 'Failed'
+                  });
+                }
+              }}
+            >
+              <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
+            </Button>
             <Button 
               variant="ghost" 
               size="icon" 

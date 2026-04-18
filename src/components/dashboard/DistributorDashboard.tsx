@@ -597,7 +597,23 @@ export function DistributorDashboard({ onToggleDistributorMode }: { onToggleDist
           </div>
           <div className="flex items-center gap-2">
             <div className="text-right hidden sm:block">
-              <p className="text-[10px] opacity-80 uppercase font-bold">Wallet</p>
+              <div className="flex items-center gap-1">
+                <p className="text-[10px] opacity-80 uppercase font-bold">Wallet</p>
+                <button 
+                  onClick={() => {
+                    if (profile?.id) {
+                      toast.promise(fetchProfile(profile.id), {
+                        loading: 'Updating...',
+                        success: 'Updated',
+                        error: 'Failed'
+                      });
+                    }
+                  }}
+                  className="p-0.5 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <RefreshCw className={cn("h-2.5 w-2.5", loading && "animate-spin")} />
+                </button>
+              </div>
               <p className="text-sm font-black">₹{profile?.wallet_balance?.toFixed(2)}</p>
             </div>
           </div>

@@ -22,7 +22,7 @@ declare global {
 }
 
 export function AddBalanceModal({ open, onClose, initialAmount }: AddBalanceModalProps) {
-  const { profile } = useAuthContext();
+  const { profile, fetchProfile } = useAuthContext();
   const [amount, setAmount] = useState(initialAmount || '');
   const [refNumber, setRefNumber] = useState('');
   const [upiId, setUpiId] = useState('');
@@ -154,6 +154,11 @@ export function AddBalanceModal({ open, onClose, initialAmount }: AddBalanceModa
 
         if (balanceError) throw balanceError;
 
+        // Force a profile fetch to update balance immediately in UI
+        if (profile?.id) {
+          await fetchProfile(profile.id);
+        }
+
         toast.success('Payment successful! Balance added to wallet.');
         onClose();
         setLoading(false);
@@ -217,6 +222,11 @@ export function AddBalanceModal({ open, onClose, initialAmount }: AddBalanceModa
               .eq('id', profile?.id);
 
             if (balanceError) throw balanceError;
+
+            // Force a profile fetch to update balance immediately in UI
+            if (profile?.id) {
+              await fetchProfile(profile.id);
+            }
 
             toast.success('Payment successful! Balance added to wallet.');
             onClose();
