@@ -1,28 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Use the API key from environment
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-
 export async function detectOperatorAndCircle(mobile: string) {
   if (!mobile || mobile.length < 10) return null;
 
   try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Identify the Indian mobile operator and circle (state) for the number: ${mobile}.
+      contents: [{ parts: [{ text: `Identify the Indian mobile operator and circle (state) for the number: ${mobile}.
       Return the result as JSON including 'operator' (Airtel, Jio, Vi, or BSNL) and 'circle' (The state name).
       Common Indian circles: West Bengal, Bihar, Delhi, Maharashtra, Karnataka, Tamil Nadu, Uttar Pradesh, Rajasthan, Gujarat, Punjab, Haryana, Kerala.
-      If unsure, return 'Unknown' for fields.`,
+      If unsure, return 'Unknown' for fields.` }] }],
       config: {
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            operator: { type: Type.STRING },
-            circle: { type: Type.STRING }
-          },
-          required: ["operator", "circle"]
-        }
       }
     });
 

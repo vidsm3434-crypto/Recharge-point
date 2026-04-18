@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import axios from "axios";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
@@ -921,6 +922,36 @@ app.post("/api/admin/process-wallet-request", async (req, res) => {
     console.error("Process wallet request error:", error);
     res.status(500).json({ error: error.message || "Internal server error" });
   }
+});
+
+app.post("/api/recharge/detect-operator", async (req, res) => {
+    const { mobile } = req.body;
+    if (!mobile || mobile.length < 10) return res.status(400).json({ error: "Invalid mobile number" });
+
+    try {
+        const geminiApiKey = process.env.GEMINI_API_KEY;
+        if (!geminiApiKey) return res.status(500).json({ error: "Gemini API key not configured" });
+
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+        const prompt = `Identify the Indian mobile operator and circle (state) for the number: ${mobile}.
+        Return the result as JSON including 'operator' (Airtel, Jio, Vi, or BSNL) and 'circle' (The state name).
+        Common Indian circles: West Bengal, Bihar, Delhi, Maharashtra, Karnataka, Tamil Nadu, Uttar Pradesh, Rajasthan, Gujarat, Punjab, Haryana, Kerala.
+        If unsure, return 'Unknown' for fields.`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: [{ parts: [{ text: prompt }] }],
+            config: { responseMimeType: "application/json" }
+        });
+
+        const result = JSON.parse(response.text);
+        res.json(result);
+    } catch (error: any) {
+        console.error("Operator detection error:", error);
+        res.status(500).json({ error: "Detection failed" });
+    }
 });
 
 // --- VITE MIDDLEWARE OR STATIC SERVING ---

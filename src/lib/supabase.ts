@@ -1,10 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  console.error('Missing Supabase environment variables. Please check your .env file or hosting settings.');
+// Diagnostic for the user
+if (typeof window !== 'undefined') {
+  (window as any).__SUPABASE_DEBUG = {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+    urlValue: supabaseUrl ? (supabaseUrl.substring(0, 10) + '...') : 'MISSING',
+    vitePrefix: supabaseUrl ? 'OK' : 'FAIL (Check VITE_ prefix in Vercel)'
+  };
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+  console.error('CRITICAL: Supabase environment variables are missing!');
+}
+
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseAnonKey || 'placeholder'
+);

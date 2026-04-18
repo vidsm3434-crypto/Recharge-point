@@ -88,16 +88,25 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       // 2. AI Lookup (When 10 digits entered)
       if (formData.mobile.length === 10) {
         setDetecting(true);
-        const result = await detectOperatorAndCircle(formData.mobile);
-        if (result) {
-          setFormData(prev => ({
-            ...prev,
-            operator: result.operator !== 'Unknown' ? result.operator : prev.operator,
-            state: result.circle !== 'Unknown' ? result.circle : prev.state
-          }));
-          if (result.operator !== 'Unknown') {
-            toast.success(`Detected: ${result.operator} (${result.circle})`);
+        try {
+          const response = await fetch('/api/recharge/detect-operator', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mobile: formData.mobile })
+          });
+          if (response.ok) {
+            const result = await response.json();
+            setFormData(prev => ({
+              ...prev,
+              operator: result.operator !== 'Unknown' ? result.operator : prev.operator,
+              state: result.circle !== 'Unknown' ? result.circle : prev.state
+            }));
+            if (result.operator !== 'Unknown') {
+              toast.success(`Detected: ${result.operator} (${result.circle})`);
+            }
           }
+        } catch (error) {
+          console.error("Auto-detect failed:", error);
         }
         setDetecting(false);
       }
