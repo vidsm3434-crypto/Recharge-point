@@ -6,19 +6,33 @@ export async function detectOperatorAndCircle(mobile: string) {
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+    
+    const prompt = `Identify the Indian mobile operator and circle (state) for the number: ${mobile}.
+    Return JSON: {"operator": "Airtel" | "Jio" | "Vi" | "BSNL" | "Unknown", "circle": "State Name" | "Unknown"}.
+    Note: Operator must strictly be one of [Airtel, Jio, Vi, BSNL].
+    Common Circles: West Bengal, Bihar, Delhi, Maharashtra, Karnataka, Tamil Nadu, Uttar Pradesh, Rajasthan, Gujarat, Punjab, Haryana, Kerala.`;
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: `Identify the Indian mobile operator and circle (state) for the number: ${mobile}.
-      Return the result as JSON including 'operator' (Airtel, Jio, Vi, or BSNL) and 'circle' (The state name).
-      Common Indian circles: West Bengal, Bihar, Delhi, Maharashtra, Karnataka, Tamil Nadu, Uttar Pradesh, Rajasthan, Gujarat, Punjab, Haryana, Kerala.
-      If unsure, return 'Unknown' for fields.` }] }],
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
       }
     });
 
-    const result = JSON.parse(response.text);
-    return result;
+    const data = JSON.parse(response.text);
+    
+    // Normalization
+    let finalOperator = data.operator;
+    if (finalOperator.includes('Jio')) finalOperator = 'Jio';
+    else if (finalOperator.includes('Airtel')) finalOperator = 'Airtel';
+    else if (finalOperator.includes('Vodafone') || finalOperator.includes('Idea') || finalOperator === 'Vi') finalOperator = 'Vi';
+    else if (finalOperator.includes('BSNL')) finalOperator = 'BSNL';
+
+    return {
+      operator: finalOperator,
+      circle: data.circle
+    };
   } catch (error) {
     console.error("AI Operator Detection Error:", error);
     return null;

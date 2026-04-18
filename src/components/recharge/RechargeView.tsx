@@ -89,13 +89,8 @@ export function RechargeView({ onBack }: { onBack?: () => void }) {
       if (formData.mobile.length === 10) {
         setDetecting(true);
         try {
-          const response = await fetch('/api/recharge/detect-operator', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mobile: formData.mobile })
-          });
-          if (response.ok) {
-            const result = await response.json();
+          const result = await detectOperatorAndCircle(formData.mobile);
+          if (result) {
             setFormData(prev => ({
               ...prev,
               operator: result.operator !== 'Unknown' ? result.operator : prev.operator,

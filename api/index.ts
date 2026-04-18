@@ -100,19 +100,6 @@ app.post("/api/recharge/process", async (req, res) => {
     } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post("/api/recharge/detect-operator", async (req, res) => {
-    const { mobile } = req.body;
-    if (!mobile || mobile.length < 10) return res.status(400).json({ error: "Invalid mobile number" });
-    try {
-        const geminiApiKey = process.env.GEMINI_API_KEY;
-        if (!geminiApiKey) return res.status(500).json({ error: "Gemini API key not configured" });
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-        const prompt = `Identify the Indian mobile operator and circle (state) for the number: ${mobile}. Return JSON: {operator: string, circle: string}`;
-        const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: [{ parts: [{ text: prompt }] }], config: { responseMimeType: "application/json" } });
-        res.json(JSON.parse(response.text));
-    } catch (error: any) { res.status(500).json({ error: "Detection failed" }); }
-});
-
 // Admin routes
 app.get("/api/config/:key", async (req, res) => {
     const { key } = req.params;
